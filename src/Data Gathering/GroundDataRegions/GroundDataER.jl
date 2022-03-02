@@ -69,7 +69,7 @@ end
 """
 """
 function getData(; type::Symbol=:METEO, source::Symbol=:STATIONS )
-    println("Non ancora implementato")
+    println("Data unavailable")
     return nothing
 end
 

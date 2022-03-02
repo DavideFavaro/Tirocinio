@@ -1,10 +1,10 @@
-module ProductsData
+module SatelliteData
 """
-Module for the Download and processing of descriptors of satellitar data from the Copernicus project databases
+Module for the Download and processing of descriptors of satellitar data from the Copernicus project databases.
 """
 
 
-
+using ArchGDAL
 using CombinedParsers
 using CombinedParsers.Regexp
 using CSV
@@ -13,21 +13,14 @@ using DataFrames
 using Downloads
 using HTTP
 
-import ArchGDAL as agd
+
+
+export getProductsDF, selectProducts, downloadProducts
 
 
 
-test = [ "C:\\Users\\DAVIDE-FAVARO\\Desktop\\XML\\1.xml",
-         "C:\\Users\\DAVIDE-FAVARO\\Desktop\\XML\\2.xml",
-         "C:\\Users\\Lenovo\\Desktop\\XML\\1.xml",
-         "C:\\Users\\Lenovo\\Desktop\\XML\\2.xml",
-         "C:\\Users\\Lenovo\\Desktop\\XML\\Prod_Test.xml" ]
+const agd = ArchGDAL
 
-out = [ "D:\\Vario\\Stage",
-        "C:\\Users\\Lenovo\\Desktop\\XML",
-        "C:\\Users\\Lenovo\\Desktop\\XML\\Test",
-        "C:\\Users\\DAVIDE-FAVARO\\Desktop",
-        "C:\\Users\\DAVIDE-FAVARO\\Desktop\\XML" ]
 
 
 # Syntax to parse the XMl reppresentation of a product
@@ -51,8 +44,12 @@ out = [ "D:\\Vario\\Stage",
 
 
 
-
 # Funzione presa da: https://stackoverflow.com/questions/48104390/julias-most-efficient-way-to-choose-longest-array-in-array-of-arrays
+"""
+    maxLenIndex( vect::AbstractVector )
+
+Retunr the index of the longest vector inside `vect` ad its length.
+"""
 function maxLenIndex( vect::AbstractVector )
     len = 0
     index = 0
@@ -108,6 +105,9 @@ end
 
 
 """
+    getAoi( path::AbstractString )::AbstractString
+
+Return the WKT `String` rappresentation of the geometry contained in the shapefile `path`
 """
 function getAoi( path::AbstractString )::AbstractString
     data = agd.read(path)
@@ -125,7 +125,7 @@ end
 
 
 #||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||
-#                                                            DOWNLOAD DEI FILE XML COLLEGATI AI PRODOTTI
+#                                                            PRODUCTS XML FILES DOWNLOAD AND PROCESSING
 #||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||
 
 """
@@ -133,9 +133,10 @@ end
 
 Obtain `maxNumber` XML description of products, starting from `start`, through `authToken`, returning the IOBuffer that contains them all
 """
-function getProductsBuffer( authToken::AbstractString; aoi::AbstractString="POLYGON((9.5000%2047.0000,%2014.0000%2047.0000,%2014.0000%2044.0000,%209.5000%2044.0000,%209.5000%2047.0000))",
-                            numMonths::Integer=6, start::Integer=0, max::Union{Integer, Nothing} = nothing, last::Bool=false )
+function getProductsBuffer( username::AbstractString, password::AbstractString, aoi::AbstractString; numMonths::Integer=6, start::Integer=0,
+                            max::Union{Integer, Nothing}=nothing, last::Bool=false )
  # Definition of the components of The URL
+    authToken = authenticate(username, password)
     query2 = "[NOW-$(numMonths)MONTHS%20TO%20NOW]%20AND%20footprint:\"Intersects($aoi)\""
     query = "search?start=0&rows=0&q=ingestiondate:$query2"
     iob = IOBuffer()
@@ -177,8 +178,7 @@ function getProductsBuffer( authToken::AbstractString; aoi::AbstractString="POLY
     end
     return iob
 end
-
-# io = getProductsBuffer( authenticate("davidefavaro","Tirocinio"), 300 )
+# io = getProductsBuffer( "davidefavaro", "Tirocinio", "POLYGON((9.5000%2047.0000,%2014.0000%2047.0000,%2014.0000%2044.0000,%209.5000%2044.0000,%209.5000%2047.0000))",  max=300 )
 
 
 
@@ -219,12 +219,12 @@ end
 """
     getProductsDF( authToken::AbstractString[, start::Integer, maxNumber::Union{Integer, Nothing} ] )
 
-Generate the DataFrame containing the data of `maxNumber` products using `authToken`, if `maxNumber` is not specified, the df will include all available products,
+Generate the DataFrame containing the data of `maxNumber` products using `username` and `password` for authentication, if `maxNumber` is not specified, the df will include all available products,
 if `start` is specified the downloaded data will begin from that index
 """
-function getProductsDF( authToken::AbstractString; aoi::AbstractString="", numMonths::Integer=6, start::Integer=0, max::Union{Integer, Nothing}=nothing, last::Bool=false )::DataFrame
+function getProductsDF( userame::AbstractString, password::AbstractString, aoi::AbstractString; numMonths::Integer=6, start::Integer=0, max::Union{Integer, Nothing}=nothing, last::Bool=false )::DataFrame
  # Download "maxNumber" pages and return the buffer containing them
-    io = getProductsBuffer(authToken, aoi=aoi, numMonths=numMonths, start=start, max=max, last=last)
+    io = getProductsBuffer(userame, password, aoi, numMonths=numMonths, start=start, max=max, last=last)
  # Create a vector of dictionaries of the products
     dict_vect = getProductsDicts(io)
  # Obtain the existing subsets of attributes of the products
@@ -238,18 +238,14 @@ function getProductsDF( authToken::AbstractString; aoi::AbstractString="", numMo
     for df in dfs_vect[2:end]
         append!(data, df, cols=:union)
     end
-
  # Convert `footprint` e `gmlfootprint` columns in geometries
     data[!, :footprint] = agd.fromWKT.( data[:, :footprint] )
     data[!, :gmlfootprint] = agd.fromGML.( replace.( replace.( data[:, :gmlfootprint], "&lt;" => "<" ), "&gt;" => ">" ) )
-
  # Order the rows based on `orderNumber`, then remove said column
     sort!( data, [:orderNumber] )
     select!( data, Not(:orderNumber) )
-
  # Create the column indicating wether a product has been downloaded 
     insertcols!( data, ( :available => fill( true, nrow(data) ) ) ),( :downloaded => fill( false, nrow(data) ) )
-
     return data
 end
 
@@ -313,29 +309,42 @@ function setUnavailable( fileIDs::Union{ AbstractString, AbstractVector{Abstract
 end
 
 
+"""
+    checkAvailabile( data_path::AbstractString, username::AbstractString, password::AbstractString )
 
-function checkAvailabile()
+Check and update availability of all the products entries contained in the CSV file `data_path` (the `username` and `password` are necessary for the check and update of the values). 
+"""
+function checkAvailabile( data_path::AbstractString, username::AbstractString, password::AbstractString )
     # Get the last available product as a DataFrame row
-    data = getProductsDF( authenticate("davidefavaro","Tirocinio"), max=1, last=true  )
-
+    data = getProductsDF( authenticate(username, password), max=1, last=true  )
     # Load the preexisting data
-    old_data = CSV.read( *( @__DIR__, "\\Dati di prova\\data.csv"), DataFrame )
-
+    old_data = CSV.read( path, DataFrame )
     # Obtain the `uuid` of the last available product
     last_available_id = data[end, :uuid]
-
     # Obtain the index of the last available product of "old_data"
     last_available_idx = findfirst( ==(last_available_id), old_data[:, :uuid] )
-
     # Set all the products not of level 0, from the last available to the end, as unavailable 
     for i in last_available_idx:size(old_data)[1]
         if ismissing(old_data[i, :productlevel]) || old_data[i, :productlevel] != "L0"
             old_data[i, :available] = false
         end
     end
-
     CSV.write( *( @__DIR__, "\\Dati di prova\\data.csv" ), old_data )
 end
+
+#=
+test = [ "C:\\Users\\DAVIDE-FAVARO\\Desktop\\XML\\1.xml",
+         "C:\\Users\\DAVIDE-FAVARO\\Desktop\\XML\\2.xml",
+         "C:\\Users\\Lenovo\\Desktop\\XML\\1.xml",
+         "C:\\Users\\Lenovo\\Desktop\\XML\\2.xml",
+         "C:\\Users\\Lenovo\\Desktop\\XML\\Prod_Test.xml" ]
+
+out = [ "D:\\Vario\\Stage",
+        "C:\\Users\\Lenovo\\Desktop\\XML",
+        "C:\\Users\\Lenovo\\Desktop\\XML\\Test",
+        "C:\\Users\\DAVIDE-FAVARO\\Desktop",
+        "C:\\Users\\DAVIDE-FAVARO\\Desktop\\XML" ]
+=#
 
 #   df = getProductsDF( authenticate("davidefavaro","Tirocinio"), 1000 )
 #   saveProductsDF( out[2], df )
@@ -351,7 +360,7 @@ end
 
 
 #   odf = CSV.read( "C:\\Users\\Lenovo\\Documents\\GitHub\\Tirocinio\\Dati di prova\\data.csv", DataFrame )
-#   checkAvailabile()
+#   checkAvailabile(*( @__DIR__, "\\Dati di prova\\data.csv"), "davidefavaro", "Tirocinio")
 #   ndf = CSV.read( "C:\\Users\\Lenovo\\Documents\\GitHub\\Tirocinio\\Dati di prova\\data.csv", DataFrame )
 
 
@@ -380,12 +389,21 @@ end
 #   
 #   intersections = agd.intersection.()
 
-function downloadProduct( authentication::AbstractString, aoi_path::AbstractString, num_per_month::Integer, from::Integer, to::Integer )
+
+"""
+    selectProducts( userame::AbstractString, password::AbstractString, aoi_path::AbstractString, num_per_month::Integer, from::Integer, to::Integer )
+
+Return products that overlap the geometry specified by `aoi_path` shapefile, using `username` and `password` for authentication return `num_per_month` products for each month
+in the `from`-`to` interval.  
+"""
+function selectProducts( userame::AbstractString, password::AbstractString, aoi_path::AbstractString, num_per_month::Integer, from::Integer=0, to::Integer=6 )
     aoi = getAoi(aoi_path)
  # DA AGGIUNGERE LA POSSIBILITA' DI SPECIFICARE IL MESE DA CUI INIZIARE A PRENDERE I PRODOTTI
-    df::DataFrame = getProductsDF( authentication, aoi=aoi, numMonths=to )
+    #   df::DataFrame = getProductsDF(userame, password, aoi, numMonths=(Months(to) - Months(from)).value)
+    df::DataFrame = getProductsDF(userame, password, aoi, numMonths=6 )
     idxs = Vector{Int64}()
     condition( date, platform, clouds, level, m, sat ) = month(date) == m && platform == sat && (platform != "Sentinel-2" || ( !ismissing(clouds) && clouds < 30.0 )) && !ismissing(level) && level == "L2"
+    #   for m in month.(collect( Month(from):Month(1):Month(to) ))
     for m in month.(collect( now()-Month(6):Month(1):now() ))
         ind::Int64 = 1
         for i in 1:num_per_month
@@ -402,31 +420,85 @@ function downloadProduct( authentication::AbstractString, aoi_path::AbstractStri
     return df[idxs, :]
 end
 
+
+
+#||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||
+#                                                                           PRODUCTS DOWNLOAD
+#||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||
+
+
+
+"""
+    dowloadProducts( userame::AbstractString, password::AbstractString, uuid::Int64, output_dir_path::AbstractString )
+
+Download the product identified by `uuid` using `username` and `password` for authentication and save it in `output_dir_path` using `uuid` as filename.
+If `show_progress` is set to `true` the progress of the download will be printed, if `verbose` is set to `true` additional informations will be printed.
+"""
+dowloadProducts( userame::AbstractString, password::AbstractString, uuid::Int64, output_dir_path::AbstractString, show_progress::Bool=false, verbose::Bool=false ) =
+    Downloads.download(
+        "https://scihub.copernicus.eu/dhus/odata/v1/Products('$uuid')/\$value",
+        output_dir_path*"\\$uuid",
+        headers = [ "Authorization" => "Basic $(authenticate(username, password))" ],
+        progress = show_progress ? ( ( total, now ) -> println("$(now/total*100)% ( $now / $total )") ) : nothing,
+        verbose = verbose
+    )
+
+"""
+    dowloadProducts( userame::AbstractString, password::AbstractString, uuids::Vector{Int64}, output_dir_path::AbstractString )
+
+Download all the products identified by the ids contained in `uuids` using `username` and `password` for authentication and save them in `output_dir_path` using their uuids as filenames.
+If `show_progress` is set to `true` the progress of the download will be printed, if `verbose` is set to `true` additional informations will be printed.
+"""
+function dowloadProducts( userame::AbstractString, password::AbstractString, uuids::Vector{Int64}, output_dir_path::AbstractString, show_progress::Bool=false, verbose::Bool=false )
+    authtoken = authenticate(username, password)
+    if show_progress
+        len = length(uuids)
+        for (i, id) in enumerate(uuids)
+            println("Product $uuid ($i of $len)")
+            Downloads.download(
+                "https://scihub.copernicus.eu/dhus/odata/v1/Products('$id')/\$value",
+                output_dir_path*"\\$id",
+                headers=["Authorization" => "Basic $authtoken"],
+                progress = ( total, now ) -> println("\t$(now/total*100)% ( $now / $total )"),
+                verbose = verbose
+            )
+        end
+    else
+        Downloads.download(
+                "https://scihub.copernicus.eu/dhus/odata/v1/Products('$id')/\$value",
+                output_dir_path*"\\$id",
+                headers=["Authorization" => "Basic $authtoken"],
+                verbose = verbose
+            )
+    end
+end
+
+#   downloadProducts( "b57f225e-d288-4e4a-bb35-2a7eb75d60e4", out[3], authenticate("davidefavaro", "Tirocinio")  )
+
 # SI OTTENGONO SOLO Sentinel-3 PERCHE' TUTTI GLI ALTRI PRODOTTI HANNO :productlevel missing
 # PER MESE 6 SI HANNO SOLO Sentinel-3
-
+#   n, p = ("davidefavaro", "Tirocinio")
 #   dir = "C:\\Users\\DAVIDE-FAVARO\\Desktop"
 #   dir = "D:\\Z_Tirocinio_Dati\\Copernicus Data"
-#   authToken = authenticate("davidefavaro","Tirocinio")
+#   uuid = "de9494a3-fdd9-46ce-98cb-42a2632e8b87"
 #   sat_file = *( @__DIR__, "\\..\\Mappe\\sat\\sette_sorelle.shp" )
-#   res = downloadProduct( authToken, sat_file, 1, 12, 6 )
-#= 
-    for id in res[:, :uuid]
-        Downloads.download( "https://scihub.copernicus.eu/dhus/odata/v1/Products('$id')/\$value", dir*"\\$id.zip", headers = [ "Authorization" => "Basic $authToken" ] )
-    end
-
-
-    uuid = "de9494a3-fdd9-46ce-98cb-42a2632e8b87"
-    Downloads.download( "https://scihub.copernicus.eu/dhus/odata/v1/Products('$uuid')/\$value", dir*"\\$uuid", headers = [ "Authorization" => "Basic $authToken" ] )
+#   res = selectProducts(n, p, sat_file, 1, 12, 6)
+#=
+    downloadProducts(n, p, res[:, :uuid], dir)
+    downloadProducts(n, p, uuid, dir)
 =#
 
 
+# @code_warntype res = selectProducts( authToken, sat_file, 1, 12, 6 )
 
 
-# @code_warntype res = downloadProduct( authToken, sat_file, 1, 12, 6 )
 
 
 
+
+
+
+#=
 using Rasters
 using Shapefile
 
@@ -448,92 +520,7 @@ poly = Shapefile.Polygon(shape.geometry[1].MBR, [1,2,3,4], shape.geometry[1].poi
 mask(data[1]; to=poly)
 
 crop(data, to=shape)
+=#
+
 
 end #module
-
-
-
-
-RasterSeries{
-    Raster{
-        Union{Missing, Float32},
-        2,
-        Tuple{
-            Dim{
-                :columns,
-                DimensionalData.Dimensions.LookupArrays.NoLookup{
-                    Base.OneTo{Int64}
-                }
-            },
-            Dim{
-                :rows,
-                DimensionalData.Dimensions.LookupArrays.NoLookup{
-                    Base.OneTo{Int64}
-                }
-            }
-        },
-        Tuple{},
-        Rasters.FileArray{
-            Rasters.NCDfile,
-            Union{Missing, Float32},
-            2,
-            Symbol,
-            DiskArrays.GridChunks{2},
-            DiskArrays.Unchunked
-        },
-        Symbol,
-        DimensionalData.Dimensions.LookupArrays.Metadata{
-            Rasters.NCDfile,
-            Dict{Symbol, Any}
-        },
-        Missing
-    },
-    1,
-    Tuple{
-        Dim{
-            :n,
-            DimensionalData.Dimensions.LookupArrays.NoLookup{
-                Base.OneTo{Int64}
-            }
-        }
-    },
-    Tuple{},
-    Vector{
-        Raster{
-            Union{Missing, Float32},
-            2,
-            Tuple{
-                Dim{
-                    :columns,
-                    DimensionalData.Dimensions.LookupArrays.NoLookup{
-                        Base.OneTo{Int64}
-                    }
-                },
-                Dim{
-                    :rows,
-                    DimensionalData.Dimensions.LookupArrays.NoLookup{
-                        Base.OneTo{Int64}
-                        }
-                    }
-            },
-            Tuple{},
-            Rasters.FileArray{
-                Rasters.NCDfile,
-                Union{Missing, Float32},
-                2,
-                Symbol,
-                DiskArrays.GridChunks{2},
-                DiskArrays.Unchunked
-            },
-            Symbol,
-            DimensionalData.Dimensions.LookupArrays.Metadata{
-                Rasters.NCDfile,
-                Dict{Symbol, Any}
-            },
-            Missing
-        }
-    }
-}
-
-
-
