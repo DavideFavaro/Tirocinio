@@ -1,0 +1,6 @@
+[deps]
+Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
+Tirocinio = "819504a1-e9f6-4561-93d3-f1d3b8763034"
+
+[compat]
+Documenter = "~0.24"
