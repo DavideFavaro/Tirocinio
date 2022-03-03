@@ -15,12 +15,7 @@ params = Dict(
     :connect_timeout => "10"
 )
 
-con = LibPQ.Connection( "dbname=$(params[:dbname]) host=$(params[:host]) port=$(params[:port]) user=$(params[:user]) password=$(params[:password])" )
-
-
-
-
-
+#   con = LibPQ.Connection( "dbname=$(params[:dbname]) host=$(params[:host]) port=$(params[:port]) user=$(params[:user]) password=$(params[:password])" )
 
 
 
@@ -61,10 +56,6 @@ function updateProductsVal( condition::Function, table::AbstractString, attribut
 
     println("Valore modificato")
 end
-
-
-
-
 
 
 

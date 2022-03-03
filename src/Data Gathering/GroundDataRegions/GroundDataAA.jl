@@ -2,7 +2,6 @@ module GroundDataAA
 """
 Module for the download and processing of atmospheric data gathered by measuring stations located in Alto Adige, Italy
 """
-
 #=
 Alto Adige:
     Link:
@@ -78,19 +77,24 @@ end
 """
     getData(; <keyword arguments> )
 
-Obtain data of category `type` from `source`
+Obtain data of category `type` and source of category `kind`.
 
 # Arguments
- - `type::Symbol=:METEO`: defines the type of data to be downloaded may either be `:METEO` or `:AIRQUALITY`
- - `source::Symbol=:STATIONS`: defines if the data to be downloaded has to regard information on the stations or their actual measurements, as such may either be `:STATIONS` or `:SENSORS`
+ - `type::Symbol=:METEO`: defines the type of data to be downloaded, it must either be `:METEO` or `:AIRQUALITY`.
+ - `kind::Symbol=:STATIONS`: defines if the data to be downloaded has to regard information on the stations or their actual measurements, it must either be `:STATIONS` or `:SENSORS`.
 """
-function getData(; type::Symbol=:METEO, source::Symbol=:STATIONS )
-    opt1 = type == :METEO ? "meteo/v1" : "airquality"
-    opt2 = source == :STATIONS ? "stations" : type == :METEO ? "sensors" : "timeseries"
-
+function getData(; type::Symbol=:METEO, kind::Symbol=:STATIONS )    
+ # The URL changes based on the `type` and `kind` of the data to be retrieved
+    opt1 = type == :METEO ? "meteo/v1" :
+        type == :AIRQUALITY ? "airquality" :
+        throw(DomainError(type, "`type` must either be `:METEO` or `:AIRQUALITY`."))
+    opt2 = kind == :STATIONS ? "stations" :
+        kind == :SENSORS ? ( type == :METEO ? "sensors" : "timeseries" ) :
+        throw(DomainError(kind, "`kind` must either be `:STATIONS` or `:SENSORS`."))
+ # Data obtained from the page in raw string form
     page = String( HTTP.get( "http://dati.retecivica.bz.it/services/$opt1/$opt2" ).body )
-
-    if source == :STATIONS
+ # Stations' data requires specific processing to be transformed in a dataframe
+    if kind == :STATIONS
         if type == :METEO
             chars = " : "
             div = "\r\n\t\t},\r\n\t\t"
@@ -104,15 +108,12 @@ function getData(; type::Symbol=:METEO, source::Symbol=:STATIONS )
         stations = split( features, "\"properties\"$chars" )
         stations = [ split( station, div )[1] for station in stations ]
         page = "[" * join( stations[2:end], "," )[1:end-lim] * "]"
-    end 
-
+    end
     data = DataFrame( jsontable(page) )
-    
-    if type == :METEO && source == :SENSORS
+    if type == :METEO && kind == :SENSORS
         insertcols!( data, :rmh => "0m" )
         transform!( data, [:DATE] => ByRow( x -> ismissing(x) ? missing : DateTime( x[1:19], "yyyy-mm-ddTH:M:S" ) ) => :DATE ) 
     end
-
     return data
 end
 

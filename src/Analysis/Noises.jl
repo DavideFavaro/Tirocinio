@@ -1,5 +1,6 @@
 module Noise
 """
+Module for the modelling of noise pollution.
 """
 
 
@@ -10,7 +11,13 @@ using Plots
 using Shapefile
 
 
-include("..\\Library\\Functions.jl")
+
+include(".\\Utils\\Functions.jl")
+
+
+
+export run_noise
+
 
 
 const agd = ArchGDAL
@@ -36,6 +43,12 @@ function transmission_loss( radius::Real )
     return 20log10(radius)
 end
 
+
+"""
+    atmospheric_absorpion_loss( radius::Real, height_m::Real, relative_humidity::Real, temperature_k::Real, frequency::Real )
+
+Compute the attenuation of a sound at a distance `radius` due to the atmosphere.
+"""
 function atmospheric_absorpion_loss( radius::Real, height_m::Real, relative_humidity::Real, temperature_k::Real, frequency::Real )
     # Calculate atmospheric absorption coefficient using ANSI S1.26-1995 standard
     # Convert elevation to atmospheric pressure
@@ -64,6 +77,11 @@ function atmospheric_absorpion_loss( radius::Real, height_m::Real, relative_humi
     return α * radius / 100
 end
 
+"""
+    minmax( profile::Vector, rel_h_src::Real=0.0, rel_h_rec::Real=0.0 )::Vector{Tuple{Int64, Real}}
+
+Return the minimum and maximum peaks in `profile` coupled with their respective position in the vector.
+"""
 function minmax( profile::Vector, rel_h_src::Real=0.0, rel_h_rec::Real=0.0 )::Vector{Tuple{Int64, Real}}
     if length(profile) <= 1
         return [ (1, -rel_h_src), (1, -rel_h_rec) ]
@@ -349,42 +367,6 @@ function egal( d1::Real, d2::Real, src_h::Real, rec_h::Real, src_flow_res::Real,
     return (levturb, lnot)
 end
 
-#= VERSIONE CON IL CALCOLO DELLE ATTENUAZIONI PARZIALI (FORSE)
-function varysurf( dists::AbstractVector, ground_type::AbstractVector, src_h::Real, rec_h::Real, soft_atten::Real, hard_atten::Real )::Real
-    drefl = src_h * dists[end] / (src_h + rec_h)
-
-    srcInf = ground_type[1] == Soft ?
-             src_h > 3.0 ?
-                 (20.0 * src_h / 3.0 - 10.0) * src_h :
-                 10.0 * src_h :
-             30.0 * src_h
-       
-    recInf = ground_type[end] == Soft ?
-             rec_h > 3.0 ?
-                 (20.0 * rec_h / 3.0 - 10.0) * rec_h :
-                 10.0 * rec_h :
-             30.0 * rec_h
-    
-    srcInf = min( srcInf, 0.7*drefl )
-    recInf = min( recInf, 0.7*(dists[end]-drefl) )
-    recInf = dists[end] - recInf
-
-    results = []
-    Δl = sum = denom = 0
-    for i in 1:length(dists)
-        w1 = w2 = 0
-        if dists[i] > srcInf && dists[i] < recInf
-            w1 = dists[i] < drefl ? rec_h : src_h
-            w2, Δl = ground_type[i] == Hard ? (0.5, hard_atten) : (1.0, soft_atten)
-        end
-        sum += w1 * w2 * Δl
-        denom += w1 * w2
-        push!( results, sum/denom )
-    end
-
-    return results
-end
-=#
 function varysurf( dists::AbstractVector, ground_type::AbstractVector, src_h::Real, rec_h::Real, soft_atten::Real, hard_atten::Real )::Real
     drefl = src_h * dists[end] / (src_h + rec_h)
 
@@ -708,67 +690,13 @@ function dal( first_second_dist::Real, second_third_dist::Real, src_h::Real, rec
     return 4.34log( (rd*abs(pl))^2 )
 end
 
-# FORSE VERSIONE MIGLIORATA
-#=
-function dal( first_second_dist::Real, second_third_dist::Real, src_h::Real, rec_h::Real, src_solpe_α::Real, flow_res1::Real, flow_res2::Real, freq::Real )::Real
-    
-    # Delany-Bazley for source and receiver leg
-    dbs = delbaz.( freq, [flow_res1, flow_res2] )
-    waveno = 2.0 * π * freq / 340.0
+"""
+    onCut( distances::Union{Vector{T1}, SubArray{T1}}, heights::Union{Vector{T2}, SubArray{T2}}, impdcs::Union{Vector{T2}, SubArray{T2}}, src_h::AbstractFloat, rec_h::AbstractFloat, nfreq::Int64, freqs::Vector{Int64} ) where {T1 <: Int64, T2 <: Float32}
 
-    rh0 = √( src_h^2 + first_second_dist^2 )
-    rh1 = √( rec_h^2 + second_third_dist^2 )
-    r1 = rh0 + rh1
-    f0 = atan(src_h, first_second_dist)
-    f1 = 2.0 * π - src_solpe_α - atan(rec_h, second_third_dist)
-    θ = atan(rec_h, first_second_dist)
-
-    h_over_wedgeleg = sin(f0) * r1
-    wedge_impedence1 = qq( r1, h_over_wedgeleg, waveno, dbs[1] )
- #NON SO SE E' UN ERRORE
-    # h_over_wedgeleg = sin(2.0 * π - f1 - src_solpe_α) * r1
-    h_over_wedgeleg = sin(f1) * r1
-    wedge_impedence2 = qq( r1, h_over_wedgeleg, waveno, dbs[2] )
-
-    a = rh0 * rh1 / r1
-    any = 2.0 - src_solpe_α / π
- # NON SONO CERTO I DUE MODI SIANO EQUIVALENTI
-    #   pl = diffraction( tot_propag_path, a, f1-f0, -1.0, any, waveno ) +
-    #        diffraction( tot_propag_path, a, f1+f0, -1.0, any, waveno ) * wedge_impedence1 +
-    #        diffraction( tot_propag_path, a, f1+f0, 1.0, any, waveno ) * wedge_impedence2 +
-    #        diffraction( tot_propag_path, a, f1-f0, 1.0, any, waveno ) * wedge_impedence1 * wedge_impedence2
-    pl = sum( diffraction.(
-                r1,
-                a,
-                [ f1-f0, f1+f0, f1+f0, f1-f0 ],
-                [  -1.0,  -1.0,   1.0,   1.0 ],
-                any,
-                waveno
-              ) .* [ 1.0, wedge_impedence1, wedge_impedence2, wedge_impedence1*wedge_impedence2 ] )
-
-    αs = [ f1-f0, f1+f0, f1-f0+2θ, f1+f0+2θ ]
-    βs = [ π-f1, f0+src_solpe_α-π, 2src_solpe_α-3π+f1, -f0+src_solpe_α-π ]
-    dists = [ src_h+rh1, rec_h+rh0 ]
-    for i in 1:4
-        if αs[i] < π
-            r = √( rh0^2 + rh1^2 - 2.0 * rh0 * rh1 * cos(αs[i]) )
-            if i == 1
-                q = 1
-            elseif i == 4
-                q = qq( r, dists[1]*sin(βs[i-1]), waveno*rα, db[1] ) * qq( r, dists[2]*sin(βs[i]), waveno*rα, db[2] )
-            else
-                q = qq( r, dists[2-i%2]*sin(βs[i-1]), waveno*rα, db[2] )
-            end
-            p = ℯ^complex(0.0, waveno*rα) / complex(rα, 0.0) * q
-            pl += p
-        end
-    end
-
-    return 4.34log( (rd*abs(pl))^2 )
-end
-=#
-
-function onCut( distances::Union{Vector{T1}, SubArray{T1}}, heights::Union{Vector{T2}, SubArray{T2}}, impdcs::Union{Vector{T2}, SubArray{T2}}, src_h::AbstractFloat, rec_h::AbstractFloat, nfreq::Int64, freqs::Vector{Int64} ) where {T1 <: Int64, T2 <: Float32}
+Return the attenuation of a sound along a terrain cut reppresented by vectors `distances`, `heights` and `impedences`. 
+"""
+function onCut( distances::Union{Vector{T1}, SubArray{T1}}, heights::Union{Vector{T2}, SubArray{T2}}, impdcs::Union{Vector{T2}, SubArray{T2}}, src_h::AbstractFloat,
+                rec_h::AbstractFloat, nfreq::Int64, freqs::Vector{Int64} ) where {T1 <: Int64, T2 <: Float32}
 
     ihard = 0
     isoft = 0 
@@ -993,9 +921,12 @@ function onCut( distances::Union{Vector{T1}, SubArray{T1}}, heights::Union{Vecto
     return attenuations
 end
 
+
 # Based on "https://www.geeksforgeeks.org/dda-line-generation-algorithm-computer-graphics/"
 """
-Digital Differential Analyzer, for line rasterization
+    DDA( dtm::GeoArrays.GeoArray{Float32}, r0::Integer, c0::Integer, rn::Integer, cn::Integer )
+
+Digital Differential Analyzer, rasterizes a line from indexes (`r0`, `c0`) to (`rn`,`cn`) returning all the cells in `dtm` crossed by the line.
 """
 function DDA( dtm::GeoArrays.GeoArray{Float32}, r0::Integer, c0::Integer, rn::Integer, cn::Integer )
     Δr = rn - r0
@@ -1016,29 +947,10 @@ function DDA( dtm::GeoArrays.GeoArray{Float32}, r0::Integer, c0::Integer, rn::In
     end
     return heigths_profile, coords_profile
 end
-#=  VERSIONE CON IL RASTER DELLE IMPEDENZE
-function DDA( dtm::GeoArrays.GeoArray{Float32}, terrain_impedences::GeoArrays.GeoArray{Float32}, r0::Integer, c0::Integer, rn::Integer, cn::Integer )
-    Δr = rn - r0
-    Δc = cn - c0
-    steps = max( abs(Δr), abs(Δc) )
-    r_inc = Δr / steps
-    c_inc = Δc / steps
-    r = Float64(r0)
-    c = Float64(c0)
-    heigths_profile = Vector{Float32}()
-    impedences_profile = Vector{Float32}()
-    coords_profile = Vector{Tuple{Float64, Float64}}()
-    for i in 1:steps
-        rint, cint = round.(Int64, [r, c])
-        push!( heigths_profile, dtm[rint, cint][1] )
-        push!( impedences_profile, terrain_impedences[rint, cint][1] )
-        push!( coords_profile, Tuple{Float64, Float64}(ga.coords( map, [rint, cint])) )
-        r += r_inc
-        c += c_inc
-    end
-    return heigths_profile, impedences_profiles, coords_profile
-end
-=#
+
+
+
+
 
 function ground_loss( dtm::GeoArrays.GeoArray{Float32}, x0::Float64, y0::Float64, frequency::Int64, noData::Float32 )
     # Cell dimensions
@@ -1244,7 +1156,7 @@ end
 
 
 
-function do_noise( dtm::AbstractString, terrain_impedences::AbstractString, source, temperature_K::Float64, relative_humidity::Float64, frequencies )
+function run_noise( dtm::AbstractString, terrain_impedences::AbstractString, source, temperature_K::Float64, relative_humidity::Float64, frequencies )
     dtm_raster = replace( ga.read(dtm), missing => -9999.0f0 )
     terrain_raster = replace( ga.read(terrain_impedences), missing => -9999.0f0 )
     x0, y0 =
@@ -1267,13 +1179,13 @@ end
 
 
 
-
+end # module
 
 
 
 
 # ========================================================== TESTING =========================================================================================================
-
+#=
 using BenchmarkTools
 
 frequency = 110
@@ -1683,5 +1595,3 @@ heatmap( 1:cols, 1:rows, mat, c=cgrad([:blue, :white, :yellow, :red]) )
     ArchGDAL.imread(map_v)
     plot(map)
 =#
-
-end # module

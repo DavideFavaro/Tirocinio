@@ -2,7 +2,6 @@ module GroundDataFVG
 """
 Module for the download and processing of atmospheric data gathered by measuring stations located in Friuli Venezia Giulia, Italy 
 """
-
 #=
 Accesso risorse Friuli:
     https://www.dati.friuliveneziagiulia.it/resource/qp5k-6pvm.csv
@@ -203,21 +202,25 @@ end
 """
     getData(; <keyword arguments> )
 
-Obtain data of category `type` from `source`
+Obtain data of category `type` and source of category `kind`.
 
 # Arguments
- - `type::Symbol=:METEO`: defines the type of data to be downloaded may either be `:METEO` or `:AIRQUALITY`
- - `source::Symbol=:STATIONS`: defines if the data to be downloaded has to regard information on the stations or their actual measurements, as such may either be `:STATIONS` or `:SENSORS`
+ - `type::Symbol=:METEO`: defines the type of data to be downloaded, it must either be `:METEO` or `:AIRQUALITY`.
+ - `kind::Symbol=:STATIONS`: defines if the data to be downloaded has to regard information on the stations or their actual measurements, it must either be `:STATIONS` or `:SENSORS`.
 """
-function getData(; type::Symbol=:METEO, source::Symbol=:STATIONS )
+function getData(; type::Symbol=:METEO, kind::Symbol=:STATIONS )
     if type == :METEO
-        if source == :STATIONS
+        if kind == :STATIONS
             return getMeteoStationsData()
-        else
+        elseif kind == :SENSORS
             return getMeteoData()
+        else
+            throw(DomainError(kind, "`kind` must either be `:STATIONS` or `:SENSORS`."))
         end
-    else
+    elseif type == :AIRQUALITY
         return getAQData()
+    else
+        throw(DomainError(type, "`type` must either be `:METEO` or `:AIRQUALITY`."))
     end
 end
 

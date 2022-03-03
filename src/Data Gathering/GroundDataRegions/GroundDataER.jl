@@ -2,7 +2,6 @@ module GroundDataER
 """
 Module for the download and processing of atmospheric data gathered by measuring stations located in Emilia Romagna, Italy
 """
-
 #=
 Link ai dati:
     Stazioni qualità aria - Link ottenuto dal bottone per il download (CSV):
@@ -11,7 +10,7 @@ Link ai dati:
         https://sdati-test.datamb.it/arex/
 
 
-Per gli altri dati non ci sono link espliciti e nemmeno bottoni o opzioni per il download 
+Per gli altri dati non ci sono link espliciti e nemmeno opzioni per il download 
 =#
 
 
@@ -67,6 +66,15 @@ end
 
 
 """
+    getData(; <keyword arguments> )
+
+Obtain data of category `type` from `source`.
+Note: The data from stations in Emilia Romagna is currently unavailable. 
+
+# Arguments
+ - `type::Symbol=:METEO`: defines the type of data to be downloaded may either be `:METEO` or `:AIRQUALITY`
+ - `source::Symbol=:STATIONS`: defines if the data to be downloaded has to regard information on the stations or their actual measurements, as such may either be `:STATIONS` or `:SENSORS`
+
 """
 function getData(; type::Symbol=:METEO, source::Symbol=:STATIONS )
     println("Data unavailable")

@@ -2,7 +2,6 @@ module GroundDataL
 """
 Module for the download and processing of atmospheric data gathered by measuring stations located in Lombardia, Italy
 """
-
 #=
 Si possono ottenere dati dal link (ALL CSV):
     Stazioni:
@@ -82,21 +81,29 @@ end
 """
     getData(; <keyword arguments> )
 
-Obtain data of category `type` from `source`
+Obtain data of category `type` and source of category `kind`.
 
 # Arguments
- - `type::Symbol=:METEO`: defines the type of data to be downloaded may either be `:METEO` or `:AIRQUALITY`
- - `source::Symbol=:STATIONS`: defines if the data to be downloaded has to regard information on the stations or their actual measurements, as such may either be `:STATIONS` or `:SENSORS`
+ - `type::Symbol=:METEO`: defines the type of data to be downloaded, int must either be `:METEO` or `:AIRQUALITY`.
+ - `kind::Symbol=:STATIONS`: defines if the data to be downloaded has to regard information on the stations or their actual measurements, it must either be `:STATIONS` or `:SENSORS`.
 """
-function getData(; type::Symbol=:METEO, source::Symbol=:STATIONS )
-    str = type == :METEO ? ( source == :STATIONS ? "nf78-nj6b" : "647i-nhxk" ) : ( source == :STATIONS ? "ib47-atvt" : "nicp-bhqi" )
+function getData(; type::Symbol=:METEO, kind::Symbol=:STATIONS )
+    str = type == :METEO ? (
+            kind == :STATIONS ? "nf78-nj6b" :
+            kind == :SENSORS ? "647i-nhxk" :
+            throw(DomainError(kind, "`kind` must either be `:STATIONS` or `:SENSORS`."))
+        ) :
+        type == :AIRQUALITY ? (
+            kind == :STATIONS ? "ib47-atvt" :
+            kind == :SENSORS ? "nicp-bhqi" :
+            throw(DomainError(kind, "`kind` must either be `:STATIONS` or `:SENSORS`."))
+        ):
+        throw(DomainError(type, "`type` must either be `:METEO` or `:AIRQUALITY`."))
     data = HTTP.get( "https://www.dati.lombardia.it/resource/$str.csv" )
     df = CSV.read( data.body, DataFrame )
-
-    if type ==:METEO && source == :SENSORS
+    if type ==:METEO && kind == :SENSORS
         insertcols!( df, :rmh => "0m" ) 
     end
-
     return df
 end
 

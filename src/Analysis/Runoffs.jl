@@ -1,12 +1,20 @@
 module Runoffs
+"""
+Module for the modelling of waterborne pollutants.
+"""
 
 
 
-import ArchGDAL as agd
-
+using ArchGDAL
 using Dates
 
-include("../Library/Functions.jl")
+
+
+include(".\\Utils\\Functions.jl")
+
+
+
+const agd = ArchGDAL
 
 
 
@@ -21,7 +29,11 @@ end
 
 
 
-# Given a tuple with both values in "-1:1" (except "(0, 0)") return a value in "1:8"
+"""
+    hash_adjacent( t::Tuple{Int64, Int64} )
+
+Given a tuple with both values in `-1:1` (except `(0, 0)`) return a value in `1:8`, matching the cell displacement with its numeric direction reppresentation.
+"""
 function hash_adjacent( t::Tuple{Int64, Int64} )
     # 3x3 matrix linearization
      # Its necessary to sum 2 to both values of t as they reppresent index displacements from the center of the matrix
@@ -32,7 +44,11 @@ function hash_adjacent( t::Tuple{Int64, Int64} )
     return res >= 5 ? res - 1 : res 
 end
 
-# Given two values in "-1:1" (except "0" and "0") return a value in "1:8"
+"""
+    hash_adjacent( r::Int64, c::Int64 )
+
+Given a two values in `-1:1` (except `(0, 0)`) return a value in `1:8`, matching the cell displacement with its numeric direction reppresentation.
+"""
 function hash_adjacent( r::Int64, c::Int64 )
     # 3x3 matrix linearization
      # Its necessary to sum 2 to both values of t as they reppresent index displacements from the center of the matrix
@@ -43,7 +59,11 @@ function hash_adjacent( r::Int64, c::Int64 )
     return res >= 5 ? res - 1 : res 
 end
 
-# Given a value in "1:8" return the corresponding tuple with both values in "-1:1", except "(0, 0)"
+"""
+    hash_adjacent( i::Int64 )
+
+Given a value in `1:8` return the corresponding tuple with both values in `-1:1`, except `(0, 0)`, matching the direction reppresentaion to the cell displacement.
+"""
 function hash_adjacent( i::Int64 )
     # To account for the fact that "i" = 5 for the tuple "(0, 0)" 
     if i > 4
@@ -57,7 +77,12 @@ end
 
 
 
-# VEDERE @view, @inbound, @turbo, @fast, LoopedVectorization.jl e StableArrays.jl PER ULTERIORI OTTIMIZZAZIONI
+"""
+    connectivity_batch!( mat, dem_band::AbstractArray{T}, noDataValue::Real ) where {T <: Number}
+
+Given NxMx8 (N and M must be the same between `mat` and `dem_band`) matrix `mat`, for each group of 8 cells with indexes r and c,
+store in them the differences in values between cell (r, c) of dem_band and its 8 adjacent cells, unless the value is equal to `noDataValue`.   
+"""
 function connectivity_batch!( mat, dem_band::AbstractArray{T}, noDataValue::Real ) where {T <: Number}
     rows, cols = size(dem_band)
     # For each cell of the dem's band
@@ -78,7 +103,13 @@ function connectivity_batch!( mat, dem_band::AbstractArray{T}, noDataValue::Real
     end
 end
 
+"""
+    connectivity( dem_band::Matrix{T}, batch_size::Integer, noDataValue::Real ) where {T <: Number}
 
+Generate a matrix with the same size as `dem_band` and 8 layers, containing for each cell (r, c) of dem_band the difference between the value of that cell and
+its 8 adjacent cells, unless the have value equal to `noDataValue`.
+The operation will be executed one `batch_size`x`batch_size` section of the matrix at a time.
+"""
 function connectivity( dem_band::Matrix{T}, batch_size::Integer, noDataValue::Real ) where {T <: Number}
     rows, cols = size(dem_band)
     mat = fill( convert(Float32, noDataValue) , rows, cols, 8 )
@@ -98,7 +129,13 @@ function connectivity( dem_band::Matrix{T}, batch_size::Integer, noDataValue::Re
     return mat
 end
 
+"""
+    createRasterizedConnectivity( file::AbstractString, dtm_path::AbstractString )
 
+Create and save as `file` a raster with the same size as the one pointed at by `dtm_path` and 8 layers, containing for each cell (r, c) of  the latter the difference
+between the value of that cell and its 8 adjacent cells, unless the have value equal to `noDataValue`.
+The operation will be executed one `batch_size`x`batch_size` section of the matrix at a time.
+"""
 function createRasterizedConnectivity( file::AbstractString, dtm_path::AbstractString )
     mat = connectivity(band_mat, 2048, ndv)
     dtm = agd.read(dtm_path)

@@ -129,7 +129,7 @@ end
 Obtain the dataframe containing informations on all available ARPAV stations 
 """
 function getMeteoStationsData()
-#Get the information on the available stations
+ #Get the information on the available stations
     # Get the page containing informations on all the available stations
     page = String( HTTP.get( "https://www.arpa.veneto.it/bollettini/meteo/h24/img07/stazioni.xml" ).body )
     # Keep only the useful portion of the page
@@ -271,23 +271,34 @@ end
 
 
 """
+    getData(; <keyword arguments> )
 
-Obtain `type` data from `source`
+Obtain data of category `type` and source of category `kind`.
+
+# Arguments
+ - `type::Symbol=:METEO`: defines the type of data to be downloaded, it must either be `:METEO` or `:AIRQUALITY`.
+ - `kind::Symbol=:STATIONS`: defines if the data to be downloaded has to regard the stations or their actual measurements, it must either be `:STATIONS` or `:SENSORS`.
 """
-function getData(; type::Symbol=:METEO, source::Symbol=:STATIONS )
+function getData(; type::Symbol=:METEO, kind::Symbol=:STATIONS )
     if type == :METEO
         stations = getMeteoStationsData()
-        if source == :STATIONS
+        if kind == :STATIONS
             return stations
-        else
+        elseif kind == :SENSORS
             return getMeteoData( stations[:, :idstaz] )
+        else
+            throw(DomainError(kind, "`kind` must either be `:STATIONS` or `:SENSORS`."))
+        end
+    elseif type == :AIRQUALITY
+        if kind == :STATIONS
+            return getAqStationsData()
+        elseif kind == :SENSORS
+            return getAqData()
+        else
+            throw(DomainError(kind, "`kind` must either be `:STATIONS` or `:SENSORS`."))
         end
     else
-        if source == :STATIONS
-            return getAqStationsData()
-        else
-            return getAqData()
-        end
+        throw(DomainError(type, "`type` must either be `:METEO` or `:AIRQUALITY`."))
     end
 end
 

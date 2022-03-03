@@ -1,16 +1,23 @@
 module DiluitionAttenuationfactor
 """
+Module for the modeling of the dispersion of pollutants in aquifiers.
 """
 
 
-
+using ArchGDAL
 using Dates
 
 
-import ArchGDAL as agd
+
+include(".\\Utils\\Functions.jl")
 
 
-include("..\\Utils\\Functions.jl")
+
+export leach
+
+
+
+const agd = ArchGDAL
 
 
 
@@ -404,7 +411,7 @@ end # module
 
 
 #------------------------------------------------ TESTING------------------------------------------------------------------------------
-
+#=
 
 
 
@@ -660,18 +667,4 @@ cona = agd.read(con_file)
 
 sats = Shapefile.Table(sat_file)
 sata = agd.read(sat_file)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-#---------------------------------------------------------------------------------------------------------------------------------------
+=#

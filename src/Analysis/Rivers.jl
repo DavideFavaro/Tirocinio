@@ -1,26 +1,35 @@
 module Rivers
+"""
+Module for the modelling of the dispersion of pollutant in rivers
+"""
 
 
-
-import ArchGDAL as agd
+using ArchGDAL
 using ArgParse
 using Dates
 
 
-include("../Library/Functions.jl")
+
+include(".\\Utils\\Functions.jl")
+
+
+
+export run_river
+
+
+
+const agd = ArchGDAL
 
 
 
 mutable struct River
-  """docstring for element"""
-
-  ma::Real
-  t::Real
-  x::Real
-  dl::Real
-  v::Real
-  w::Real
-  k::Real
+  ma::Float64  # Pollutant mass
+  t::Float64   # Time
+  x::Float64
+  dl::Float64
+  v::Float64   # Speed
+  w::Float64   # Hydraulic section
+  k::Float64   # Decay coefficient
 
   concentration
 
@@ -44,15 +53,12 @@ function calc_concentration!( r::River )
   return r.concentration
 end
 
-#=
-   os.system("start "+os.path.dirname(__file__)+"/../tutorial/manuale_envifate_dispersione_fluviale.pdf")
-=#
 
 
-         #                                     min         min_end   min_int        C / conc             radius
-function run_river( dem, slope, river, source, start_time, end_time, time_interval, resolution::Integer, concentration::Real, mean_hydraulic_radius::Real, fickian_x::Real=0.05,
-                  # w / sez                     k                    manning
-                    hydraulic_section::Real=1.0, decay_coeff::Real=0, manning_coeff::Real=0.05, output_path::AbstractString )
+         #                                     min         min_end   min_int                           C / conc               radius
+function run_river( dem, slope, river, source, start_time, end_time, time_interval, resolution::Int64, concentration::Float64, mean_hydraulic_radius::Float64, fickian_x::Float64=0.05,
+                  # w / sez                         k                      manning
+                    hydraulic_section::Float64=1.0, decay_coeff::Float64=0, manning_coeff::Float64=0.05, output_path::AbstractString )
     
  """ CONTROLLO SUI RASTER `dem` E `slope`
     if not self.slope.isValid():

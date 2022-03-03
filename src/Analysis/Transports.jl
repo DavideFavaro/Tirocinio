@@ -1,19 +1,15 @@
 module Transport
-
-#=
-    def help(self):         
-        #self.credits = u"Università della Tuscia\n Viterbo - Italy\nRaffaele Pelorosso, Federica Gobattoni\nDeveloper: Francesco Geri"
-        #QMessageBox.about(self.dlg,"Credits", self.credits ) 
-        if platform.uname()[0]=="Windows":
-            os.system("start "+os.path.dirname(__file__)+"/../tutorial/manuale_envifate_solute.pdf")
-=#
+"""
+"""
 
 
 
 using ArchGDAL
 
 
+
 const agd = ArchGDAL
+
 
 
                       # top          bottom          q                      phead

@@ -1,21 +1,29 @@
 module Plumes
 """
-Module for the modelling of pollutants' dispersion in the atmosphere
+Module for the modelling of pollutants' dispersion in the atmosphere.
 """
 
 
 
-import ArchGDAL as agd
+using ArchGDAL
 using ArgParse
 using Dates
 
 
-include("..\\Library\\Functions.jl")
+
+include(".\\Utils\\Functions.jl")
+
+
+
+export run_plume
+
+
+
+const agd = ArchGDAL
 
 
 
 mutable struct Plume
-    """docstring for element"""
     # concentration: concentrazione inquinante m3/sec
     # d: distanza (coordinata x)
     # y,z: coordinate in metri
@@ -27,14 +35,14 @@ mutable struct Plume
     # smoke_temperature: temperatura gas all'uscita del camino
     # temperature: temperatura ambiente
 
-    concentration::Float64
-    d::Float64
-    y::Float64
-    z::Float64
-    stability::String
-    outdoor::String
-    stack_height::Float64
-    stack_diameter::Float64
+    concentration::Float64      # Pollutant concentration (m³/sec)
+    d::Float64                  # distance, x coordinate (m)
+    y::Float64                  # y coordinate (m)
+    z::Float64                  # z coordinate (m)
+    stability::String           # stability class
+    outdoor::String             
+    stack_height::Float64       # height of the stack source of the pollutants
+    stack_diameter::Float64     
     wind_direction::Integer
     wind_speed::Float64
     gas_speed::Float64
@@ -63,18 +71,6 @@ function calc_h!( p::Plume )
     end
     return p.H
 end
-#= VERSIONE SENZA LO STRUCT
-function calc_h( d::Real, stack_diameter::Real, gas_speed::Real, smoke_temperature::Real, temperature::Real )
-    try
-        fb = 9.81 * ( (stack_diameter * gas_speed) / 4 ) * ( ( smoke_temperature / temperature ) / smoke_temperature )
-        Δh = 1.6fb^(1/3) * d^(2/3)
-        return stack_height + Δh
-    catch
-        return stack_height
-    end
-end
-=#
-
 
 function calc_σ!(p::Plume)
     σ_values = Functions.air_extract( p.c_stability, p.outdoor )
@@ -89,40 +85,17 @@ function calc_σ!(p::Plume)
     p.σz = ( σz1 * p.d ) / ( 1 + σz2 * p.d )^σzexp
     return p.σy, p.σz
 end
-#= VERSIONE SENZA LO STRUCT
-function calc_σ( d::Real, stability_class::AbstractString, outdoor::AbstractString )
-    σ_values = Functions.air_extract( stability_class, outdoor )
-    σy = ( σ_values[0] * d ) / ( 1 + σ_values[1] * d )^σ_values[2]
-    σz = ( σ_values[3] * d ) / ( 1 + σ_values[4] * d )^σ_values[5]
-    return σy, σz
-end
-=#
-
 
 function calc_g!(p::Plume)
     p.g1 = ℯ^( ( -0.5 * p.y^2 ) / p.σy^2 )
     p.g2 = ℯ^( ( -0.5 * (p.z - p.stack_height)^2 ) / p.σz^2 ) + ℯ^( ( -0.5 * (p.z + p.stack_height)^2 ) / p.σz^2 )
     return p.g1, p.g2
 end
-#= VERSIONE SENZA LO STRUCT
-function calc_g( y::Real, z::Real, σy::Real, σz::Real, stack_height::Real )
-    g1 = ℯ^( ( -0.5y^2 ) / σy^2 )
-    g2 = ℯ^( ( -0.5(z - stack_height)^2 ) / σz^2 ) + ℯ^( ( -0.5(z + stack_height)^2 ) / σz^2 )
-    return g1, g2
-end
-=#
-
 
 function calc_C!( p::Plume )
     p.C = ( 100p.concentration / 3600p.wind_speed ) * ( (p.g1 * p.g2) / ( 2π * p.σy * p.σz ) )
     return p.C
 end
-#= VERSIONE SENZA LO STRUCT
-function calc_C( concentration::Real, wind_speed::Real, σy::Real, σz::Real, g1::Real, g2::Real )
-    return ( 100concentration / 3600wind_speed ) * ( (g1 * g2) / ( 2π * σy * σz ) )
-end
-=#
-
 
 function calcPlume!(p::Plume)
     if p.d <= 0
@@ -142,6 +115,8 @@ end
 
 
 """
+    compute_result!( dtm::AbstractArray, r0::Integer, c0::Integer, ri::Integer, ci::Integer, plume::Plume )
+
 Given the raster `dtm` and the indexes (`r0`, `c0`) of the source, modify the postion values of object `sediment` and return the concentration at indexes (`ri`, `ci`)
 """
 function compute_result!( dtm::AbstractArray, r0::Integer, c0::Integer, ri::Integer, ci::Integer, plume::Plume )

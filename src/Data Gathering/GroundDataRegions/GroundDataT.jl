@@ -2,7 +2,6 @@ module GroundDataT
 """
 Module for the download and processing of atmospheric data gathered by measuring stations located in Trentino, Italy
 """
-
 #=
 Trentino:
     Altri link utili:
@@ -167,18 +166,22 @@ end
 
 
 
-"""
-"""
+
 #=
 Nel CSV si ha:
-    - TRENTO PSC al posto di PARCO S. CHIARA
-    - TRENTO VBZ al posto di VIA BOLZANO
-    - ROVERETO LGP al poso di ROVERETO
-    - RIVA GAR al psoto di RIVA DEL GARDA
-    - BORGO VALSUGANA al posto di BORGO VAL
+    - TRENTO PSC      <==> di PARCO S. CHIARA
+    - TRENTO VBZ      <==> VIA BOLZANO
+    - ROVERETO LGP    <==> ROVERETO
+    - RIVA GAR        <==> RIVA DEL GARDA
+    - BORGO VALSUGANA <==> BORGO VAL
 manca:
     - stazione A22 (AVIO)
 =#
+"""
+    getAQStationsData()
+
+Obtain information on the air quality monitoring stations of Trentino.
+"""
 function getAQStationsData()
     return CSV.read( ".\\Dati stazioni\\rete_qual_air_TN.csv", DataFrame )
 end
@@ -188,7 +191,7 @@ end
 """
     getAQData()
     
-Return a `CSV.File` containing the data on air quality collected from measuring stations in Trentino Alto Adige
+Return a `CSV.File` containing the data on air quality collected from measuring stations in Trentino.
 """
 function getAQData()
     data = HTTP.get( "https://bollettino.appa.tn.it/aria/opendata/csv/last/" )
@@ -208,26 +211,32 @@ end
 """
     getData(; <keyword arguments> )
 
-Obtain data of category `type` from `source`
+Obtain data of category `type` and source of category `kind`.
 
 # Arguments
- - `type::Symbol=:METEO`: defines the type of data to be downloaded may either be `:METEO` or `:AIRQUALITY`
- - `source::Symbol=:STATIONS`: defines if the data to be downloaded has to regard information on the stations or their actual measurements, as such may either be `:STATIONS` or `:SENSORS`
+ - `type::Symbol=:METEO`: defines the type of data to be downloaded, it must either be `:METEO` or `:AIRQUALITY`.
+ - `kind::Symbol=:STATIONS`: defines if the data to be downloaded has to regard the stations or their actual measurements, it must either be `:STATIONS` or `:SENSORS`.
 """
-function getData(; type::Symbol=:METEO, source::Symbol=:STATIONS )
+function getData(; type::Symbol=:METEO, kind::Symbol=:STATIONS )
     if type == :METEO
         stations = getMeteoStationsData()
-        if source == :STATIONS
+        if kind == :STATIONS
             return stations
-        else
+        elseif kind == :SENSORS
             return getMeteoData( stations[:, :codice] )
+        else
+            throw(DomainError(kind, "`kind` must either be `:STATIONS` or `:SENSORS`."))
+        end
+    elseif type == :AIRQUALITY
+        if kind == :STATIONS
+            return getAQStationsData()
+        elseif kind == :SENSORS
+            return getAQData()
+        else
+            throw(DomainError(kind, "`kind` must either be `:STATIONS` or `:SENSORS`."))
         end
     else
-        if source == :STATIONS
-            return getAQStationsData()
-        else
-            return getAQData()
-        end
+        throw(DomainError(type, "`type` must either be `:METEO` or `:AIRQUALITY`."))
     end
 end
 

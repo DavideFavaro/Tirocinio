@@ -1,6 +1,6 @@
 module Functions
 """
-Module containing auxiliary functions
+Module containing auxiliary functions.
 """
 
 
@@ -12,7 +12,7 @@ using Rasters
 
 
 
-export substance_extract, texture_extract, air_extract, cn_extract, cn_list_extract, array2raster!, writeRaster!, applystyle,
+export # substance_extract, texture_extract, air_extract, cn_extract, cn_list_extract, array2raster!, writeRaster!, applystyle,
        getindex, setindex!, convert, -,
        getOrigin, getCellDims, getSidesDistances, toCoords, toIndexes,
        compute_position, expand!
@@ -28,10 +28,9 @@ const agd = ArchGDAL
 
 
 
-Base.getindex( collection::Raster, x::Float64, y::Float64 ) = collection[X(Near(x)), Y(Near(y))][1]
-Base.setindex!( collection::Raster, v, x::Float64, y::Float64, ) = collection[X(Near(x)), Y(Near(y))] .= v
+Base.getindex( collection::Raster{T}, x::Float64, y::Float64 ) where {T} = collection[X(Near(x)), Y(Near(y))][1]
+Base.setindex!( collection::Raster{T}, v, x::Float64, y::Float64, ) where {T} = collection[X(Near(x)), Y(Near(y))] .= v
 Base.convert(::Type{Int64}, n::AbstractFloat) = round(Int64, n)
-Base.:-( x::Tuple{Vararg{T1}}, y::Vector{T2} ) where {T1<:Number, T2<:Number} = length(x) == length(y) ? Tuple( xi-yi for (xi, yi) in zip(x, y) ) : throw(ArgumentError("`x` and `y` must have the same size"))
 
 
 #=
@@ -91,33 +90,7 @@ end
 =#
 
 
-#= SOSTITUITI DALLA NUOVA writeRaster
-function array2raster!( newRasterfn, xmin, ymin, pixelWidth, pixelHeight, xsize, ysize, array )
-	# vedi https://pcjericks.github.io/py-gdalogr-cookbook/raster_layers.html#create-raster-from-array
-    # cols = array.shape[1]
-    # rows = array.shape[0]
-    cols = xsize
-    rows = ysize
-    originX = xmin
-    originY = ymin
 
-    driver = agd.getdriver("GTiff")
-    outRaster = agd.create( newRasterfn, driver, cols, rows, 1, ArchGDAL.GDT_Byte )
-    agd.setgeotransform!( outRaster, [ originX, pixelWidth, 0, originY, 0, pixelHeight ] )
-    outband = agd.getband(1)
-    agd.write!( outband, array )
-    #outRasterSRS = agd.importEPSG(4326)
-    #agd.setproj!( outRaster,  agd.toWKT(outRasterSRS) )
- """
-     outband.FlushCache()
- """
-end
-
-function writeRaster!( newRasterfn, xmin, ymin, pixelWidth, pixelHeight, xsize, ysize, array )
-    reversed_arr = reverse(array) # reverse array so the tif looks like the array
-    array2raster!( newRasterfn, xmin, ymin, pixelWidth, pixelHeight, xsize, ysize, reversed_arr ) # convert array to raster
-end
-=#
 """
     writeRaster( data::Array{Float32}, driver::agd.Driver, geotransform::Vector{Float64}, refsys::AbstractString, noData::Real, output_path::AbstractString=".\\raster.tiff", output::Bool=false )
 
@@ -128,17 +101,6 @@ If `output` is set to true return the new raster, otherwise return nothing.
 function writeRaster( data::Array{Float32}, driver::ArchGDAL.Driver, geotransform::Vector{Float64}, resolution::Real, refsys::AbstractString, noDataValue::Real, output_file_path::AbstractString=".\\raster.tiff", output::Bool=false )
     rows, cols, bands = length(size(data)) < 3 ? (size(data)..., 1) : size(data) 
     res_raster = agd.create(output_file_path, driver=driver, width=rows, height=cols, nbands=bands, dtype=Float32)
- #= NON SO QUALE SIA IL COMANDO PER SETTARE I METADATI CON `ArchGDAL`
-    target_ds.SetMetadata(
-        Dict(
-            "credits" => "Envifate - Francesco Geri, Oscar Cainelli, Paolo Zatelli, Gianluca Salogni, Marco Ciolli - DICAM Università degli Studi di Trento - Regione Veneto",
-            "modulo" => "Analisi sedimentazione marina",
-            "descrizione" => "Simulazione di sedimento disperso in ambiente marino",
-            "srs" => refsys,
-            "data" => today()
-        )
-    )
- =#
     for i in 1:bands
         agd.setnodatavalue!(agd.getband(res_raster, i), noDataValue)
         agd.write!(res_raster, data[:, :, i], i)
@@ -297,82 +259,8 @@ end
 
 
 
-
-
-
-
-#= NON UTILIZZATE
-function rasterFromPointsValues( points::Vector{Tuple{Int64, Int64}}, values::Vector{T}, driver::agd.Driver, resolution::Real, geotransform::Vector{Float64}, refsys::AbstractString, noDataValue::T, output_file_path::AbstractString ) where {T <: Real}
-    if length(points) != length(values)
-        throw(DomainError("There must be the same number of points in `points` and values in `values`"))
-    end
-
-    #  <sort points in increasing order>
-
-    minR = minimum(x -> x[1], points) 
-    minC = minimum(x -> x[2], points)
-    maxR = maximum(x -> x[1], points)
-    maxC = maximum(x -> x[2], points)
-
-    #   data = [ isnothing( findfirst(p -> p == (r, c), points) ) ? noData : values[findfirst(p -> p == (r, c), points)] for r in minR:maxR, c in minC:maxC ]
-    data = fill(noDataValue, maxR-minR, maxC-minC)
-    for r in minR:maxR, c in minC:maxC
-        match = findfirst(p -> p == (r, c), points)
-        if !isnothing(match)
-            data[r-minR+1, c-minC+1] = values[match]
-        end
-    end
-
-    writeRaster(data, driver, geotransform, refsys, noDataValue, output_file_path, false )
-end
-
-function rasterFromPointsValues( points::Vector{Tuple{Int64, Int64}}, value::T, driver::agd.Driver, resolution::Real, geotransform::Vector{Float64}, refsys::AbstractString, noDataValue::T, output_file_path::AbstractString ) where {T <: Real}
-    # <sort points in increasing order>
-    
-    minR = minimum(x -> x[1], points) 
-    minC = minimum(x -> x[2], points)
-    maxR = maximum(x -> x[1], points)
-    maxC = maximum(x -> x[2], points)
-
-    data = [ isnothing(findfirst(p -> p == (r, c), points)) ? noDataValue : value for r in minR:maxR, c in minC:maxC ]
-
-    writeRaster( data, driver, geotransform, refsys, noDataValue, output_file_path, false )
-end
-=#
-
-
-
-
 end # module
-#=
-""" Main problems with raster data handling:
-- There seems to be no direct way to convert spatial measurements in degrees to meters.
-- There is no one package that seems to be complete, the two more promising for the sake of the project seems to be `ArchGDAL.jl` and `Rasters.jl`
-    but both seem to be lacking in some department that is central for the development of the project, while also being incompatible with eachother.
-- Currently, in `ArchGDAL.jl`, there seems to be no way of obtaining the exact (X, Y) coordinates of a cell at indexes (row, column).
-    It's possible to obtain the minimum X coordinate value, the maximum Y value and the value of the displacement between a cell
-    and the next one on both axis as the geotransformation vector with:
-        `ArchGDAL.getgeotransform( raster )`
-    which returns a vector of six values including the aforementioned ones.
-    There is also the function:
-        `ArchGDAL.applygeotransform( geotransform, row, column )`
-    that would theoretically serve the purpose, but in practice returns an inexact value, albeit not by much.
-    The method seems also to be the main way of obtaining indexes from coordinates, using the inverse of the geotransform as input
-    along with the X and Y values, obtaining the inverse transformationvector with:
-        `ArchGDAL.invgeotransform!( geotransform, destinationvector )`
-    having `geotransform` the transformation to invert and `destinationvector` the vector  that will be updated with the new values
-    (it needs to be declared and intitialized beforehand as a vector of `Float64` values).
-- The package `Rasters.jl`, for every `Raster` object created mantains two arrays of the coordinates corresponding to each cell,
-    thus allowing to find the coordinates of a cell by accessing these arrays with the row and column of the cell.
-    The problem can also be partially bypassed with the use of `Selectors` defined in the `DimensionalData.jl` package.
-    These objects allow to index an Array through the use of coordinates, for example:
-        `raster[Near(coordinateX), Near(coordinateY)]`
-    this line accesses the raster `raster` at the cell with coordinates values closest to (`coordinateX`, `coordinateY`).
-    While solving the problem of `ArchGDAL` the package lacks the same functionalities, not being able to operate directly or
-    even read `Shapefiles` (however, it does support the use of shapefiles, read through the `Shapefile.jl` package, as input for
-    some of its methods).
-"""
-=#
+
 #= TESTING 
 
 

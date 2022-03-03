@@ -1,48 +1,45 @@
 module Sediments
 """
-Module for marine sedimentation analysis
+Module for marine sedimentation analysis.
 """
 
 
-import ArchGDAL as agd
+using ArchGDAL
 using ArgParse
 using Parameters
 using Dates
 
 
-include("../Library/Functions.jl")
+
+include(".\\Utils\\Functions.jl")
 
 
 
-#   NON SO COME SI DOCUMENTANO GLI STRUCT
+export run_sediment
+
+
+
+const agd = ArchGDAL
+
+
+
 @with_kw mutable struct Sediment
-    """docstring for element"""
-  
-    # dredged_mass: input sedimento (kg/sec)
-    # t: tempo finale
-    # h: profondità metri
-    # Dx,Dy: coefficienti di diffusione
     # x0,y0: coordinate sorgente
     # x,y: coordinate target point
-    # V: velocità media corrente
-    # w: velocità di sedimentazione
-    # dt: delta t per la discretizzazione dell'integrale
-    # U: amplitude of the oscillatory current
-    # tide: tidal cycle es. 12 (ore)
   
-    dredged_mass::Float64
-    time::Int64
-    mean_depth::Float64
-    x_dispersion_coeff::Float64
-    y_dispersion_coeff::Float64
-    x::Float64
-    y::Float64
-    mean_flow_speed::Float64
-    flow_direction::Float64
-    mean_sedimentation_velocity::Float64
-    time_intreval::Int64
-    current_oscillatory_amplitude::Float64 = 0.0
-    tide::Int64 = 0
+    dredged_mass::Float64                           # input sediment (kg/sec)
+    time::Int64                                     # final time
+    mean_depth::Float64                             # depth (m)
+    x_dispersion_coeff::Float64                     # dispersion coefficient
+    y_dispersion_coeff::Float64                     # dispersion coefficient
+    x::Float64                                      # source coordinate
+    y::Float64                                      # source coordinate
+    mean_flow_speed::Float64                        # mean speed of the flowing water
+    flow_direction::Float64                         # direction fo the flow (°)
+    mean_sedimentation_velocity::Float64            # mean velocity of the sedimentation process
+    time_intreval::Int64                            # time interval for integral discretization
+    current_oscillatory_amplitude::Float64 = 0.0    # amplitude of the oscillatory current
+    tide::Int64 = 0                                 # tidal cycle (h)
   
     ω = 0
     ew
@@ -62,14 +59,12 @@ function calc_q( s::Sediment )
     return s.dredged_mass / ( 4π *s.mean_depth * isqrt(s.x_dispersion_coeff * s.y_dispersion_coeff) )
 end
 
-
 function calc_e!( s::Sediment, i )
     s.ew = s.ω > 0 ? s.current_oscillatory_amplitude / ( s.ω * cos(deg2rad(s.ω)) - cos(deg2rad(s.ω * i *s.time_intreval)) ) : 0
     e1 = ℯ^(-(( s.x - s.mean_flow_speed * ( s.time - i * s.time_intreval) + s.ew ) / ( 4s.x_dispersion_coeff * (s.time - i * s.time_intreval) ) ))
     e2 = ℯ^(-( s.y^2 / ( 4s.y_dispersion_coeff * (s.time - i * s.time_intreval) ) ) - ( (s.mean_sedimentation_velocity * (s.time - i * s.time_intreval)) / s.mean_depth ) )
     return e1*e2
 end
-
 
 function calcSediment!( s::Sediment )
     if s.x <= 0

@@ -1,5 +1,7 @@
 module Lakes
-
+"""
+Module for the modeling of dispersion of pollutants in bodies of water.
+"""
 
 
 using ArchGDAL
@@ -8,7 +10,9 @@ using Dates
 using Sys
 
 
-include("../Library/Functions.jl")
+
+include(".\\Utils\\Functions.jl")
+
 
 
 export run_lake
@@ -38,23 +42,6 @@ end
 
 
 function calc_concentration!( l::Lake )
- #=
-     c1_1 = l.distance_x - ( l.velocity_x * l.time )
-     c1_2 = c1_1^2
-     c1_3 = c1_2 / ( 4 * l.fickian_x * l.time )
-   
-     c2_1 = l.distance_y - ( l.velocity_y * l.time )
-     c2_2 = c2_1^2
-     c2_3 = c2_2 / ( 4 * l.fickian_y * l.time )
-   
-     c3_2 = exp( -(c1_3 + c2_3) )
-     c3_1 = exp( -l.λk * l.time )
-   
-     c4 = c3_2 * c3_1
-   
-     c5 = l.ma / ( 4π * l.time * √(l.fickian_x * l.fickian_y) ) 
-     l.C = c4 * c5
- =#
     c1, c2 = ( (l.distance_x, l.distance_y) - ( (l.velocity_x, l.velocity_y) * l.time ) )^2 / ( 4 * (l.fickian_x, l.fickian_y) * l.time )
     c3 = ℯ^( -(c1 + c2) - (l.λk * l.time) )
     c4 = l.concentration / ( 4π * l.time * √(l.fickian_x * l.fickian_y) )
@@ -163,12 +150,7 @@ end # module
 
 
 
-
-
-
-
-
-
+#=
 using ArchGDAL
 const agd = ArchGDAL
 
@@ -253,3 +235,4 @@ thing = Thing(20, 4, 3, src_r, src_c, 40)
 pos = [ (src_r, src_c) ]
 res = [ calc_val!(thing) ]
 expand!( x -> x > 20 && x < 200, pos, res, dtm, src_r, src_c, thing )
+=#

@@ -1,10 +1,23 @@
 module Lights
+"""
+Module for the modelling of light pollution.
+"""
 
 
 
-import ArchGDAL as agd
+using ArchGDAL
 
-include("..\\Library\\Functions.jl")
+
+
+include(".\\Utils\\Functions.jl")
+
+
+
+export run_light
+
+
+
+const agd = ArchGDAL
 
 
 
@@ -191,7 +204,7 @@ end # module
 
 
 
-#   QUESTE FORMULE NON TENGONO CONTO CHE LA "Y" E' DECRESCENTE, MA FORSE NON CAMBIA PERCHE' L'ANGOLO E' LO STESSO MA SPOSTATO/INVERTITO ?
+#=   QUESTE FORMULE NON TENGONO CONTO CHE LA "Y" E' DECRESCENTE, MA FORSE NON CAMBIA PERCHE' L'ANGOLO E' LO STESSO MA SPOSTATO/INVERTITO ?
 #       forse ho sistemato
 rotate_x( xp::Float64, yp::Float64, xc::Float64, yc::Float64, θ::Int64 ) = xc + ( (xp - xc)cos(deg2rad(θ)) - (yp - yc)sin(deg2rad(θ)) )
 rotate_y( xp::Float64, yp::Float64, xc::Float64, yc::Float64, θ::Int64 ) = yc - ( (xp - xc)sin(deg2rad(θ)) + (yp - yc)cos(deg2rad(θ)) )
@@ -868,170 +881,4 @@ function run_light( dem::AbstractString, source, resolution::Integer, intenisty:
 
 
 end
-
-
-
-
-function run_light( dem, source, resolution::Integer, srource_height::Real=0.0, observer_height::Real=1.75, rarefraction::Real=0.14286, processing_memory::Integer=500, output_path::AbstractString=".\\light_intensity.tiff"  )
-
-    if agd.geomdim(source) != 0
-        throw(DomainError(source, "`source` must be a point"))
-    end
-
-    refsys = agd.getspatialref(source)
-
-    if agd.importWKT(agd.getproj(dem)) != refsys
-        throw(DomainError("The reference systems are not uniform. Aborting analysis."))
-    end
-
-
-    nfeature = 0
-    features = agd.getgeom.( agd.getfeature(source) )
-    for feature in features
-        x_source = agd.getx(geom, 0)
-        y_source = agd.gety(geom, 0)
-
-
-        idxlevel = self.source.fields().indexFromName('level')
-        intensity=feature.attributes()[idxlevel]
-
-        nfeature += 1
-
-
-        
-        
-
-
-        grass_area=str(x_min)+','+str(x_max)+','+str(y_min)+','+str(y_max)+' ['+str(self.areastudio.crs().authid())+']'
-        grass_coord=str(x_source)+','+str(y_source)+' ['+str(self.source.crs().authid())+']'
-
-        nameviewshed='viewshedanalysis'+str(nfeature)
-
-        params = { '-b' : True, '-c' : False, '-e' : False, '-r' : False, 'GRASS_RASTER_FORMAT_META' : '', 'GRASS_RASTER_FORMAT_OPT' : '',
-                   'GRASS_REGION_CELLSIZE_PARAMETER' : 0, 'GRASS_REGION_PARAMETER' :grass_area, 'coordinates' : grass_coord,
-                   'input' : self.dem.dataProvider().dataSourceUri(), 'max_distance' : -1, 'memory' : self.memory, 'observer_elevation' : self.hsource, 'output' : nameviewshed,
-                   'refraction_coeff' : self.rarefraction, 'target_elevation' : self.htarget }
-        viewshed_proc = processing.run('grass7:r.viewshed', params)
-
-
-
-
-        #aggiungo per controllo la viewshed alla toc
-        iface.addRasterLayer(viewshed_proc['output'])
-
-        viewshed=QgsProject.instance().mapLayersByName(nameviewshed)[0]
-
-
-        for row in 1:rows
-            for col in 1:cols
-                x = col*pixel_size+x_min+(pixel_size/2)
-                y = row*pixel_size+y_min+(pixel_size/2)
-
-                punto_controllo = QgsPointXY(x,y)
-
-                for pol in polygons
-                    poly = pol.geometry()
-                    if poly.contains(punto_controllo)
-
-                        cfr_viewshed=viewshed.dataProvider().identify(QgsPointXY(x, y),QgsRaster.IdentifyFormatValue)
-
-                        if cfr_viewshed.results()[1] == 1
-                            deltax=x-x_source
-                            deltay=y-y_source
-                            dist=math.sqrt(math.pow(deltay,2)+math.pow(deltax,2))
-
-                            #new_intensity=(1/math.pow(dist,2))*intensity
-                            new_intensity=(1/dist)*intensity
-
-                            if nfeature == 1
-                                if new_intensity > 0
-                                    outData[row,col]=new_intensity
-                                else
-                                    outData[row,col]=0
-                                end
-                            else
-                                if new_intensity > 0
-                                    outData[row,col]=outData[row,col]+new_intensity
-                                else
-                                    outData[row,col]=outData[row,col]
-                                end
-                            end
-                        else
-                            outData[row,col]=0
-                        end
-                    end
-                end
-            end
-        end
-    end
-
-
-
-    valNoData = -9999
-
-    gtiff_driver = agd.getdriver("GTiff")
-    target_ds = agd.create( output_path, gtiff_driver, round(Int64, x_res), round(Int64, y_res), 1, agd.GDAL.GDT_Float32 )
-    agd.setgeotransform!(target_ds, [ x_min, resolution, 0.0, y_max, 0.0, -resolution ])
-    agd.setproj!( target_ds, refsys )
- """ NON SO QUALE SIA IL COMANDO PER SETTARE I METADATI CON `ArchGDAL`
-    target_ds.SetMetadata(
-        Dict(
-            "credits" => "Envifate - Francesco Geri, Oscar Cainelli, Paolo Zatelli, Gianluca Salogni, Marco Ciolli - DICAM Università degli Studi di Trento - Regione Veneto",
-            "modulo" => "Analisi inquinamento luminoso",
-            "descrizione" => "Simulazione di inquinamento luminoso da sorgente puntuale singola o multipla",
-            "srs" => refsys,
-            "data" => today()
-        )
-    )
- """
-    band1 = agd.getband(target_ds, 1)
-    agd.setnodatavalue!( band1, Float64(valNoData) )
-    agd.fillraster!(band1, valNoData)
-    xsize = agd.width(band1)
-    ysize = agd.height(band1)
-    band = agd.read(band1)
-    # outData = deepcopy(band)
-    outData = band
-    rows=ysize-1
-    cols=xsize-1
-
-
-        self.label_status.setText("Preparazione output")
-        self.label_status.setStyleSheet('color : #e8b445;font-weight:bold')
-
-        outData_raster=outData[::-1]
-        band.WriteArray(outData_raster)
-
-
-    band= None
-    target_ds = None
-
-
-
-    base_raster_name=os.path.basename(self.path_output)
-    raster_name=os.path.splitext(base_raster_name)[0]
-    self.iface.addRasterLayer(self.path_output, raster_name)
-
-
-    layer=None
-    for lyr in list(QgsProject.instance().mapLayers().values()):
-        if lyr.name() == raster_name
-            layer = lyr
-        end
-    end
-
-
-    functions.applystyle(layer,'gr',0.5)
-
-
-    tempoanalisi=time.time() - start_time
-    tempostimato=time.strftime("%H:%M:%S", time.gmtime(tempoanalisi))
-    messaggio="---------------------------------\n"
-    messaggio+="Fine modellazione\n"
-    messaggio+="\nTempo di analisi: "+tempostimato+"\n"
-    messaggio+="---------------------------------\n\n"
-    self.console.appendPlainText(messaggio)
-
-    self.label_status.setText("In attesa di dati")
-    self.label_status.setStyleSheet('color : green; font-weight:bold')
-end
+=#

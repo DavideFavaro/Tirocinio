@@ -1,4 +1,7 @@
 module GeoTrees
+"""
+Module containing functions for creating and operating on a `RTree`, to quickly store and locate georeferenced polygons.
+"""
 
 
 
@@ -36,9 +39,9 @@ end
 """
     printTree( node, n::Int64=0 )
 
-Given a "SpatialIndexing.RTree" or "Node" either("Spatialindexing.Branch" or "Spatialindexing.Leaf") print the content of the tree
+Given a "SpatialIndexing.RTree" or "Node" either("Spatialindexing.Branch" or "Spatialindexing.Leaf") print the content of the tree with `node` as root.
 """
-function printTree( node, n::Int64=0 )
+function printTree( node::Union{SpatialIndexing.RTree, SpatialIndexing.Node}, n::Int64=0 )
     if node isa SpatialIndexing.Leaf
         println("LEVEL: 1")
         println("MBR: $(node.mbr)")
@@ -63,51 +66,6 @@ end
 
 
 
-# --------------------------------------------------------------- RICERCA TRAMITE POLIGONO [V] ---------------------------------------------------------------------------------------
-"""
-    findPolygon( node::SpatialIndexing.Leaf{T,N}, polygon::ArchGDAL.IGeometry{ArchGDAL.wkbPolygon} )::Vector{SpatialIndexing.SpatialElem} where {T, N}
-
-Find and return all the `SpatialIndexing.SpatialElem`s children of `node` that intersect, contain or are containded in `polygon`.
-"""
-function findPolygon( node::SpatialIndexing.Leaf{T,N}, polygon::ArchGDAL.IGeometry{ArchGDAL.wkbPolygon} )::Vector{SpatialIndexing.SpatialElem} where {T, N}
-    return [
-        child
-        for child in node.children
-        if agd.contains(polygon, child.val.geometry) || agd.contains(child.val.geometry, polygon) || agd.intersects(polygon, child.val.geometry) 
-    ]
-end
-
-"""
-    findPolygon( node::SpatialIndexing.Branch{T,N,V}, polygon::ArchGDAL.IGeometry{ArchGDAL.wkbPolygon} ) where {T, N, V}
-
-Find and return a `Vector{SpatialIndexing.SpatialElem}` that contains all the elements of the subtree rooted in `node` that intersect, contain or are contained in `polygon`.
-"""
-function findPolygon( node::SpatialIndexing.Branch{T,N,V}, polygon::ArchGDAL.IGeometry{ArchGDAL.wkbPolygon} ) where {T, N, V}
-    res = Vector{SpatialIndexing.SpatialElem}()
-    for child in node.children
-        poly_mbr = mbr(polygon)
-        if si.intersects(child.mbr, poly_mbr) || si.contains(child.mbr, poly_mbr) || si.contains(poly_mbr, child.mbr)
-            results = findPolygon(child, polygon)
-            if !isempty(results)
-                append!(res, results)
-            end
-        end
-    end
-    return res
-end
-
-"""
-    findpolygon( tree::SpatialIndexing.RTree{T,N}, polygon::ArchGDAL.IGeometry{ArchGDAL.wkbPolygon} ) where {T, N}
-
-Return all the polygons of `tree` intersected by, contained in or containing `polygon`, or the polygon that conains it, or an empty `Vector{SpatialIndexing.SpatialElem}`, if there is no such polygon.
-"""
-function findPolygon( tree::SpatialIndexing.RTree{T,N}, polygon::ArchGDAL.IGeometry{ArchGDAL.wkbPolygon} ) where {T, N}
-    return findPolygon(tree.root, polygon)
-end
-
-
-
-# ----------------------------------------------------------------------- RICERCA KNN [V] --------------------------------------------------------------------------------------------
 """
     distance( element::Union{SpatialIndexing.SpatialElem, SpatialIndexing.Node}, region::SpatialIndexing.Region )
 
@@ -126,20 +84,64 @@ distance( element::Union{SpatialIndexing.SpatialElem, SpatialIndexing.Node}, reg
 
 
 
+# --------------------------------------------------------------- POLYGON SEARCH ---------------------------------------------------------------------------------------
 """
-    knn( node::SpatialIndexing.Leaf{T,N}, point::SpatialIndexing.Point{T,N}, k::Int64 ) where {T, N}
+    findPolygons( node::SpatialIndexing.Leaf{T,N}, polygon::ArchGDAL.IGeometry{ArchGDAL.wkbPolygon} )::Vector{SpatialIndexing.SpatialElem} where {T, N}
+
+Find and return a `Vector{SpatialIndexing.SpatialElem}` that contains all the `SpatialIndexing.SpatialElem`s children of `node` that intersect, contain or are containded in `polygon`.
+"""
+function findPolygons( node::SpatialIndexing.Leaf{T,N}, polygon::ArchGDAL.IGeometry{ArchGDAL.wkbPolygon} )::Vector{SpatialIndexing.SpatialElem} where {T, N}
+    # Return a Vector of all the children of the node that contain, are contained in, or intersect with `polygon`
+    return [
+        child
+        for child in node.children
+        if agd.contains(polygon, child.val.geometry) || agd.contains(child.val.geometry, polygon) || agd.intersects(polygon, child.val.geometry) 
+    ]
+end
+
+"""
+    findPolygons( node::SpatialIndexing.Branch{T,N,V}, polygon::ArchGDAL.IGeometry{ArchGDAL.wkbPolygon} ) where {T, N, V}
+
+Find and return a `Vector{SpatialIndexing.SpatialElem}` that contains all the elements of the subtree rooted in `node` that intersect, contain or are contained in `polygon`.
+"""
+function findPolygons( node::SpatialIndexing.Branch{T,N,V}, polygon::ArchGDAL.IGeometry{ArchGDAL.wkbPolygon} ) where {T, N, V}
+    res = Vector{SpatialIndexing.SpatialElem}()
+    for child in node.children
+        poly_mbr = mbr(polygon)
+        if si.intersects(child.mbr, poly_mbr) || si.contains(child.mbr, poly_mbr) || si.contains(poly_mbr, child.mbr)
+            results = findPolygon(child, polygon)
+            if !isempty(results)
+                append!(res, results)
+            end
+        end
+    end
+    return res
+end
+
+"""
+    findPolygons( tree::SpatialIndexing.RTree{T,N}, polygon::ArchGDAL.IGeometry{ArchGDAL.wkbPolygon} ) where {T, N}
+
+Return all the polygons of `tree` intersected by, contained in or containing `polygon`, or the polygon that conains it, or an empty `Vector{SpatialIndexing.SpatialElem}`, if there is no such polygon.
+"""
+function findPolygons( tree::SpatialIndexing.RTree{T,N}, polygon::ArchGDAL.IGeometry{ArchGDAL.wkbPolygon} ) where {T, N}
+    return findPolygon(tree.root, polygon)
+end
+
+
+
+# ----------------------------------------------------------------- KNN SEARCH -----------------------------------------------------------------------------------------
+"""
+    findKNN( node::SpatialIndexing.Leaf{T,N}, point::SpatialIndexing.Point{T,N}, k::Int64 ) where {T, N}
 
 Return the `k` `SpatialIndexing.SpatialElem`s children of `node` that are closest to `point` (at most k elements will be returned).
 """
-function knn( node::SpatialIndexing.Leaf{T,N}, point::SpatialIndexing.Point{T,N}, k::Int64 ) where {T, N}
+function findKNN( node::SpatialIndexing.Leaf{T,N}, point::SpatialIndexing.Point{T,N}, k::Int64 ) where {T, N}
     agd_point = agd.createpoint(point.coord...)
-
- # FORSE SI PUO' UNIRE TUTTA L'ESPRESSIONE E RITORNARLA DIRETTAMENTE, METTENDO LA PARTE DI INDEXING ALLA FINE DELL'ESPRESSIONE
-    results = sort!(
-        map(
+    results = sort!( # 2) Sort the children in increasing order of distance from `point` 
+        map( # 1) Map every children (they will all be `SpatialElements`) of the node to the distance between its centroid and `point`
             element -> (
                 element,
-                agd.distance(
+                agd.distance( # Compute distance between the centroid of the polygon and `point`
                     agd.centroid(element.val.geometry),
                     agd_point
                 )
@@ -148,108 +150,101 @@ function knn( node::SpatialIndexing.Leaf{T,N}, point::SpatialIndexing.Point{T,N}
         ),
         lt=(x, y) -> x[2] < y[2]
     )
+    # 3) Return the, at most, `k` elements that are closer to `point` 
     return results[1:min(k, length(results))]
 end
 
 """
-    function knn( node::SpatialIndexing.Branch{T,N,V}, point::SpatialIndexing.Point{T,N}, k::Int64 ) where {T, N, V}
+    findKNN( node::SpatialIndexing.Branch{T,N,V}, point::SpatialIndexing.Point{T,N}, k::Int64 ) where {T, N, V}
 
 Return the `k` `SpatialIndexing.SpatialElem`s of the subtree rooted in `node` that are closest to `point` (at most k elements will be returned).
 """
-function knn( node::SpatialIndexing.Branch{T,N,V}, point::SpatialIndexing.Point{T,N}, k::Int64 ) where {T, N, V}
-    # Children of `node` sorted by increasing distance from `point`
-    #   candidates = sort!( map( child -> ( child, distance(child, point) ), node.children ), lt=isless2 )
-
-
- # FORSE SI PUO' UNIRE TUTTA L'ESPRESSIONE E RITORNARLA DIRETTAMENTE, METTENDO LA PARTE DI INDEXING ALLA FINE DELL'ESPRESSIONE
-    candidates = sort( node.children, lt=(x, y) -> distance(x, point) < distance(y, point) )
-    results = sort!(
-        reduce(
+function findKNN( node::SpatialIndexing.Branch{T,N,V}, point::SpatialIndexing.Point{T,N}, k::Int64 ) where {T, N, V}
+    # 1) Order the children of the current node by increasing distance from point
+    candidates = sort( node.children, lt=(x, y) -> distance(x, point) < distance(y, point) ) 
+    results = sort!( # 5) Sort the resulting vector by increasing distance from `point`
+        reduce( # 4) For each child of the current node a Vector of the results will be returned, join the vectors in a single one
             vcat,
-            knn.(
-                candidates[1:min(k, length(candidates))],
+            findKNN.( # 3) For each of the children (they could be `Leaf`s or other `Branch`s) find its `k` children closest to `point`
+                candidates[1:min(k, length(candidates))], # 2) Take, at most, the first `k` children (if there are less than `k` children, take all of them)
                 Ref(point),
                 k
             )
         ),
         lt=(x, y) -> x[2] < y[2]
     )
+    # 6) Take, at most, the first `k` results (if there are less than `k` children, take all of them)
     return results[1:min(k, length(results))]
 end
 
 """
-    knn( tree::SpatialIndexing.RTree{T,N}, point::SpatialIndexing.Point{T,N}, k::Int64 ) where {T, N}
+    findKNN( tree::SpatialIndexing.RTree{T,N}, point::SpatialIndexing.Point{T,N}, k::Int64 ) where {T, N}
 
 Return the `k` `SpatialIndexing.SpatialElem`s contained in `tree` that are closest to `point` (at most k elements will be returned).
 """
-function knn( tree::SpatialIndexing.RTree{T,N}, point::SpatialIndexing.Point{T,N}, k::Int64 ) where {T, N}
-    return knn(tree.root, point, k)
+function findKNN( tree::SpatialIndexing.RTree{T,N}, point::SpatialIndexing.Point{T,N}, k::Int64 ) where {T, N}
+    return findKNN(tree.root, point, k)
 end
 
 
+
+# ------------------------------------------------------------- DISTANCE BASED SEARCH ----------------------------------------------------------------------------------
 """
-    knn( node::SpatialIndexing.Leaf{T,N}, point::SpatialIndexing.Point{T,N} distance::Float64 ) where {T, N}
+    findPolygons( node::SpatialIndexing.Leaf{T,N}, point::SpatialIndexing.Point{T,N} distance::Float64 ) where {T, N}
 
 Return all the `SpatialIndexing.SpatialElem`s children of `node` that are within `distance` from point.
 """
-function knn( node::SpatialIndexing.Leaf{T,N}, point::SpatialIndexing.Point{T,N} distance::Float64 ) where {T, N}
+function findPolygons( node::SpatialIndexing.Leaf{T,N}, point::SpatialIndexing.Point{T,N} distance::Float64 ) where {T, N}
     agd_point = agd.createpoint(point.coord...)
-    return filter!(
-        res -> res[2] <= distance,
-        sort!(
-            map(
-                element -> (
-                    element,
-                    agd.distance(
-                        agd.centroid(element.val.geometry),
-                        agd_point
-                    )
-                ),
-                node.children
-            ),
-            lt=(x, y) -> x[2] < y[2]
-        )
-    )
-end
-
-"""
-    knn( node::SpatialIndexing.Branch{T,N,V}, point::SpatialIndexing.Point{T,N} distance::Float64 ) where {T, N, V}
-
-Return the `k` `SpatialIndexing.SpatialElem`s of the subtree rooted in `node` that are within `distance` from `point`.
-"""
-function knn( node::SpatialIndexing.Branch{T,N,V}, point::SpatialIndexing.Point{T,N}, distance::Float64 ) where {T, N, V}
-    # Children of `node` within `distance` from `point`, sorted by increasing distance from `point`.
- # FORSE NON E' NECESARIO FILTRARE UN'ALTRA VOLTA
-    return filter!(
-        res -> res <= distance,
-        sort!(
-            reduce(
-                vcat,
-                knn.(
-                    filter!(
-                        child -> distance(child, point) <= distance,
-                        sort(
-                            node.children,
-                            lt=(x, y) -> distance(x, point) < distance(y, point)
-                        )
-                    ),
-                    Ref(point),
-                    distance
+    results = sort!( # 2) Sort the children in increasing order of distance from `point`
+        map( # 1) Map every children (they will all be `SpatialElements`) of the node to the distance between its centroid and `point`
+            element -> (
+                element,
+                agd.distance( # Compute distance between the centroid of the polygon and `point`
+                    agd.centroid(element.val.geometry),
+                    agd_point
                 )
             ),
-            lt=(x, y) -> x[2] < y[2]
-        )
+            node.children
+        ),
+        lt=(x, y) -> x[2] < y[2]
     )
-    return results
+    # 3) Return all the children within `distance` from `point`
+    return results[1:something( findfirst(res -> res[2] > distance, result), length(result) )]
 end
 
 """
-    knn( tree::SpatialIndexing.RTree{T,N}, point::SpatialIndexing.Point{T,N}, distance::Float64 ) where {T, N}
+    findPolygons( node::SpatialIndexing.Branch{T,N,V}, point::SpatialIndexing.Point{T,N} distance::Float64 ) where {T, N, V}
 
-Return the `k` `SpatialIndexing.SpatialElem`s contained in `tree` that are within `distance` from `point`.
+Return all the `SpatialIndexing.SpatialElem`s of the subtree rooted in `node` that are within `distance` from `point`.
 """
-function knn( tree::SpatialIndexing.RTree{T,N}, point::SpatialIndexing.Point{T,N}, distance::Float64 ) where {T, N}
-    return knn(tree.root, point, distance)
+function findPolygons( node::SpatialIndexing.Branch{T,N,V}, point::SpatialIndexing.Point{T,N}, distance::Float64 ) where {T, N, V}
+    results = sort!( # 5) Sort the results by distance from `point`
+        reduce( # 4) For each child of the current node a Vector of the results will be returned, join the vectors in a single one
+            vcat,
+            findPolygons.( # 3) For each of the children (they could be `Leaf`s or other `Branch`s) find all its children whithin `distance` from `point` 
+                sort( # 1) Sort the children by increasing distance from `point`
+                    node.children,
+                    lt=(x, y) -> distance(x, point) < distance(y, point)
+                )[1:something( findfirst(res -> res[2] > distance, result), length(result) )], # 2) All children up to the first farther from `point` than `distance`
+                Ref(point),
+                distance
+            )
+        ),
+        lt=(x, y) -> x[2] < y[2]
+    )
+    # 6) Return all the results up to the first farther than `distance` from `point`
+    return results[1:something( findfirst(res -> res[2] > distance, result), length(result) )]
+end
+
+
+"""
+    findPolygons( tree::SpatialIndexing.RTree{T,N}, point::SpatialIndexing.Point{T,N}, distance::Float64 ) where {T, N}
+
+Return all the `SpatialIndexing.SpatialElem`s contained in `tree` that are within `distance` from `point`.
+"""
+function findPolygons( tree::SpatialIndexing.RTree{T,N}, point::SpatialIndexing.Point{T,N}, distance::Float64 ) where {T, N}
+    return findPolygons(tree.root, point, distance)
 end
 
 
