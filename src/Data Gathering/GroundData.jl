@@ -1,9 +1,7 @@
 module GroundData
 """
-Module allowing to obtain data from measurement stations located in various regions of Italy including: Alto Adige, Friuli Venezia Giulia, Lombardia, Trentino and Veneto.
+Module to obtain data from measurement stations located in various regions of Italy including: Alto Adige, Friuli Venezia Giulia, Lombardia, Trentino and Veneto.
 """
-
-
 #=
 colonna	     |   descrizione
 ------------------------------------------------------------------------------------
@@ -174,11 +172,11 @@ function generateUuidsTable()
     end
     # AA e V hanno delle stazioni ( 7 e 2 rispettivamente, che non hanno latitudine e longitudine )
     mdf = pop!( df, [:latitude, :longitude], ismissing )
-    CSV.write( "./Dati stazioni/missing_stazioni.csv", mdf )
+    CSV.write(split(@__DIR__, "src")[1]*"\\resources\\Ground stations data\\missing_stazioni.csv", mdf)
     disallowmissing!(df)
     unique!( df, [:longitude, :latitude] )
     insertcols!( df, :uuid => [ uuid4() for i in 1:nrow(df) ] )
-    CSV.write( "./Dati stazioni/stazioni.csv", df )
+    CSV.write(split(@__DIR__, "src")[1]*"\\resources\\Ground stations data\\stazioni.csv", df)
     return df
 end
 
@@ -224,13 +222,13 @@ function getGroundData( type::Symbol=:METEO, regions::Region... )
      # Obtain the dataframes that will be used to create the standard format dataframe, while checking for
         # possible problems
         resSta = try 
-                    rgn.getData( type=type, source=:STATIONS )
+                    rgn.getData( type=type, kind=:STATIONS )
                  catch e
                     println( "Skipped $region, due to:\n", e )
                     continue
                  end
         resSen = try
-                    rgn.getData( type=type, source=:SENSORS )
+                    rgn.getData( type=type, kind=:SENSORS )
                  catch e
                     println( "Skipped $region, due to:\n", e )
                     continue
@@ -241,7 +239,8 @@ function getGroundData( type::Symbol=:METEO, regions::Region... )
         bridge = rgn.getRegionIds(type)
         res = standardize( map, resSta, resSen, bridge )
         mres = pop!( res, [:latitude, :longitude], ismissing )
-        uuids = isfile("..\\..\\..\\resources\\Ground stations data\\stazioni.csv") ? CSV.read( ".\\Dati stazioni\\stazioni.csv", DataFrame ) : generateUuidsTable()
+        path = split(@__DIR__, "src")[1]*"\\resources\\Ground stations data\\stazioni.csv"
+        uuids = isfile(path) ? CSV.read(path, DataFrame) : generateUuidsTable()
         res = innerjoin( uuids[:, [:uuid, :longitude, :latitude]], res, on=[:longitude, :latitude] )
         append!( df, res )
         append!( mdf, mres )

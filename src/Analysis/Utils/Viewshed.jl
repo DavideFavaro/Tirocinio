@@ -1,12 +1,6 @@
+"""Module with functions for the computation of profiles and viewshed."""
 module Viewshed
-"""
-Module with functions for the computation of profiles and viewshed
-"""
 
-
-#=
-    FORSE SI PUO' MODIFICARE NELL'OTTICA DI USARE Rasters.jl E IN GENERALE SI POTREBBE METTERE UN PO' A POSTO
-=#
 
 
 """

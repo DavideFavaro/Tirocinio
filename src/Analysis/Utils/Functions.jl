@@ -1,7 +1,5 @@
+"""Module containing auxiliary functions."""
 module Functions
-"""
-Module containing auxiliary functions.
-"""
 
 
 

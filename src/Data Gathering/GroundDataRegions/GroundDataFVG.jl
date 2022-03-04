@@ -1,6 +1,6 @@
 module GroundDataFVG
 """
-Module for the download and processing of atmospheric data gathered by measuring stations located in Friuli Venezia Giulia, Italy 
+Module for the download and processing of atmospheric data gathered by measuring stations located in Friuli Venezia Giulia, Italy.
 """
 #=
 Accesso risorse Friuli:
@@ -37,34 +37,33 @@ using HTTP
 using JSONTables
 
 
+
 export getData,
        getRegionAttributes, getRegionIds, getRegionStationInfo
 
 
+
 @syntax meteo_data = Repeat(
-                        "<",
-                        re"[^ >]+",
-                        Optional( re" [^ =]+=\"[^ \"]+\"" ),
-                        Optional( re" [^ =]+=\"[^\"]+\"" ),
-                        ">",
-                        Either( Numeric(Int64), Numeric(Float64), re"[^>]+" ),
-                        "</", re"[^>]+", ">"
-                     ) 
+   "<",
+   re"[^ >]+",
+   Optional( re" [^ =]+=\"[^ \"]+\"" ),
+   Optional( re" [^ =]+=\"[^\"]+\"" ),
+   ">",
+   Either( Numeric(Int64), Numeric(Float64), re"[^>]+" ),
+   "</", re"[^>]+", ">"
+) 
 
 
 
 """
     getRegionAttributes( [ type::Symbol=:METEO ] )
 
-Obtain the names of the columns of the region's dataframe required by `GroundData.createMap`'s `attributes` parameter to create
-`GroundData.standardize`'s `map` parameter
+Obtain the names of the columns of the region's dataframe required by `GroundData.createMap`'s `attributes` parameter to create `GroundData.standardize`'s `map` parameter.
 """
 function getRegionAttributes( type::Symbol=:METEO )
-    return type == :METEO ?
-               [ :param, :unit, :value, nothing, :observation_time, :longitude, :latitude, :station_altitude, nothing, nothing, :rmh ] :
-               type == :AIRQUALITY ?
-                   [ :parametro, :unita_misura, :value, nothing, :data_misura, :longitudine, :latitudine, nothing, :dati_insuff, nothing ] :
-                   throw( DomainError( type, "`type` must be either `:METEO` OR `:AIRQUALITY`" ) )
+    return type == :METEO ? [ :param, :unit, :value, nothing, :observation_time, :longitude, :latitude, :station_altitude, nothing, nothing, :rmh ] :
+        type == :AIRQUALITY ? [ :parametro, :unita_misura, :value, nothing, :data_misura, :longitudine, :latitudine, nothing, :dati_insuff, nothing ] :
+            throw(DomainError(type, "`type` must be either `:METEO` OR `:AIRQUALITY`."))
 end
 
 
@@ -72,11 +71,12 @@ end
 """
     getRegionAttributes( [ type::Symbol=:METEO ] )
 
-Obtain the names of the columns of the dataframe required for `GroundData.standardize`'s `bridge` parameter
+Obtain the names of the columns of the dataframe required for `GroundData.standardize`'s `bridge` parameter.
 """
 function getRegionIds( type::Symbol=:METEO )
     return type == :METEO ? :nome :
-               type == :AIRQUALITY ? nothing : throw( DomainError( type, "`type` must be either `:METEO` OR `:AIRQUALITY`" ) )
+        type == :AIRQUALITY ? nothing :
+            throw(DomainError(type, "`type` must be either `:METEO` OR `:AIRQUALITY`."))
 end
 
 
@@ -84,15 +84,12 @@ end
 """
     getRegionStationInfo( [ type::Symbol=:METEO  ] )
 
-Obtain the names of the columns of the region's stations dataframe required by `GroundData.createMap`'s `attributes` parameter to be used
-in `GroundData.generateUuidsTable`
+Obtain the names of the columns of the region's stations dataframe required by `GroundData.createMap`'s `attributes` parameter to be used in `GroundData.generateUuidsTable`.
 """
 function getRegionStationsInfo( type::Symbol=:METEO )
-    return type == :METEO ?
-               [ nothing, :nome, :longitude, :latitude ] :
-               type == :AIRQUALITY ?
-                   [ nothing, :ubicazione, :longitudine, :latitudine ] :
-                   throw( DomainError( type, "`type` must be either `:METEO` OR `:AIRQUALITY`" ) )
+    return type == :METEO ? [ nothing, :nome, :longitude, :latitude ] :
+        type == :AIRQUALITY ? [ nothing, :ubicazione, :longitudine, :latitudine ] :
+            throw(DomainError(type, "`type` must be either `:METEO` OR `:AIRQUALITY`."))
 end
 
 
@@ -100,10 +97,10 @@ end
 """
     getMeteoStationsData()
 
-Obtain a `DataFrame` describing the meteo stations in Friuli Venezia Giulia, Italy
+Obtain a `DataFrame` describing the meteo stations in Friuli Venezia Giulia, Italy.
 """
 function getMeteoStationsData()
-    return CSV.read( ".\\Dati stazioni\\stazioni_meteoclimatiche-FVG.csv", DataFrame )
+    return CSV.read(split(@__DIR__, "src")[1]*"resources\\Ground stations data\\stazioni_meteoclimatiche-FVG.csv", DataFrame)
 end
 
 
@@ -115,7 +112,7 @@ end
 """
     getMeteoData()
 
-Obtain the data of the meteorological stations in Friuli Venezia Giulia as a `DataFrame`
+Obtain the data of the meteorological stations in Friuli Venezia Giulia as a `DataFrame`.
 """
 function getMeteoData()
     resources = [ "ARI", "BAR", "BGG", "BIC", "BOA", "BOR", "BRU", "CAP", "CDP", "CER", "CHI", "CIV", "CMT", "COD", "COR",
@@ -124,8 +121,7 @@ function getMeteoData()
                   "UDI", "VIV", "ZON" ]
     #   prec_type = [ "nulla", "pioggia", "pioggia e neve", "neve" ]
     #   cloudiness = [ "n.d.", "sereno", "poco nuvoloso", "variabile", "nuvoloso", "coperto" ]
-    
-    data_str = []
+    data_str = String[]
     for res in resources
         try
             page = HTTP.get("https://dev.meteo.fvg.it/xml/stazioni/$res.xml")
@@ -136,19 +132,17 @@ function getMeteoData()
             end
         end
     end
-    
     data_split = @. replace( replace( getindex( split( data_str, r"</?meteo_data>" ), 2 ), r"\n *" => "" ), r"<!--[^-]+-->" => "" )
     data_parse = meteo_data.(data_split)
-
-    vect = []
+    vect = Dict[]
     for data in data_parse
         # Attributes of a single station, they are shared between all the parameters measured by the station
         others = [
-                     Symbol( String( attribute[2] ) ) => attribute[6] isa Number ? attribute[6] : String( attribute[6] )
-                     for attribute in data[1:6]
+                    Symbol( String( attribute[2] ) ) => attribute[6] isa Number ? attribute[6] : String( attribute[6] )
+                    for attribute in data[1:6]
                  ]
         for attribute in data[7:end]
-            # Parameters measured by a single station
+            # Parameters measured by each station
             dict = push!(
                        Dict(
                           :param => !ismissing( attribute[4] ) ? String( attribute[4][5] ) : String( attribute[2] ),
@@ -160,19 +154,14 @@ function getMeteoData()
             push!( vect, dict )
         end
     end
-
     df = select!( DataFrame(vect), Not(2, 7) )
-
     rel_heights = [ length( split( param, " a " ) ) == 2 ? split( param, " a " )[2] : "0m" for param in df[:, :param] ]
-
     transform!(
         df,
         [:station_name] => ByRow( x -> x = uppercase(x) ) => :nome,
         [:observation_time] => ByRow( x -> DateTime( x[1:14], "dd/mm/yyyy H.M" ) ) => :observation_time    
     )
-
     insertcols!( df, :rmh => rel_heights )
-
     return df
 end
 
@@ -181,7 +170,7 @@ end
 """
     getAQData()
 
-Obtain data on airquality gathered form measuring stations in Friuli Venezia Giulia
+Obtain data on airquality gathered form measuring stations in Friuli Venezia Giulia.
 """
 function getAQData()
     codes = [ "qp5k-6pvm" , "d63p-pqpr", "7vnx-28uy", "t274-vki6", "2zdv-x7g2", "ke9b-p6z2" ]
@@ -205,8 +194,8 @@ end
 Obtain data of category `type` and source of category `kind`.
 
 # Arguments
- - `type::Symbol=:METEO`: defines the type of data to be downloaded, it must either be `:METEO` or `:AIRQUALITY`.
- - `kind::Symbol=:STATIONS`: defines if the data to be downloaded has to regard information on the stations or their actual measurements, it must either be `:STATIONS` or `:SENSORS`.
+- `type::Symbol=:METEO`: defines the type of data to be downloaded, it must either be `:METEO` or `:AIRQUALITY`.
+- `kind::Symbol=:STATIONS`: defines if the data to be downloaded has to regard information on the stations or their actual measurements, it must either be `:STATIONS` or `:SENSORS`.
 """
 function getData(; type::Symbol=:METEO, kind::Symbol=:STATIONS )
     if type == :METEO

@@ -1,7 +1,5 @@
+"""Module containing functions for creating and operating on a `RTree`, to quickly store and locate georeferenced polygons."""
 module GeoTrees
-"""
-Module containing functions for creating and operating on a `RTree`, to quickly store and locate georeferenced polygons.
-"""
 
 
 

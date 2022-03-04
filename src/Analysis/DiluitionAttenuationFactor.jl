@@ -1,4 +1,4 @@
-module DiluitionAttenuationfactor
+module DiluitionAttenuationFactor
 """
 Module for the modeling of the dispersion of pollutants in aquifiers.
 """
@@ -13,7 +13,7 @@ include(".\\Utils\\Functions.jl")
 
 
 
-export leach
+export run_leaching
 
 
 
@@ -33,15 +33,15 @@ mutable struct DAF
     soil_density::Float64
     tera_e
     orthogonal_extension::Float64
-    time
+    time::Int64
 
-    acquifer_flow_direction::Float64
+    acquifer_flow_direction::Int64
     algorithm::Symbol
     option::Symbol
   
-    R
-    DAF
-    DAF_tot
+    R::Float64
+    DAF::Float64
+    DAF_tot::Float64
   
     DAF(secondary_source_concentration,x,y,α_x,α_y,decay_coeff,darcy_velocity,kd,soil_density,tera_e,orthogonal_extension,time,acquifer_flow_direction,algorithm,option) = new(secondary_source_concentration,x,y,α_x,α_y,decay_coeff,darcy_velocity,kd,soil_density,tera_e,orthogonal_extension,time,acquifer_flow_direction,algorithm,option)
 end
@@ -75,9 +75,9 @@ end
 #   LE FUNZIONI DI `DAF` USANO LA FUNZIONE erf DI PYTHON IN JULIA TALE FUNZIONE SI TROVA NEL PACCHETTO `SpecialFunctions.jl`
 
 function calc_R!(c::DAF)
-    c.R = 1 + ( c.kd * ( c.ro_s / c.tera_e ) )
+    c.R = 1.0 + ( c.kd * ( c.ro_s / c.tera_e ) )
     return c.R
-end  
+end
 
 
 function calc_DAF_ispra!(c::DAF)
@@ -87,19 +87,18 @@ function calc_DAF_ispra!(c::DAF)
     # eliminando la terza componente dell'asse z è necessario moltplicare per 1/2 (quindi 0.5)
     # per verifica vedere Domenico P.A. e Schwartz F.W. (1998), Physical and Chemical Hydrogeology, John Wiley and Sons, New York.
     # da pagina 642 a pag 644
-    if c.α_x == 0
+    if c.α_x == 0.0
       c.α_x = 0.1c.x
     end
-    if c.α_y == 0
-      c.α_y = c.α_x / 3
+    if c.α_y == 0.0
+      c.α_y = c.α_x / 3.0
     end
-  
-    R = 1 + ( c.kd * ( c.ro_s / c.tera_e ) )
-    daf1 = 0.50ℯ^( ( c.x / 2c.α_x ) * ( 1 - √( 1 + ( ( 4c.decay_coeff * c.α_x * R ) / c.v_e ) ) ) )
+    R = 1.0 + ( c.kd * ( c.ro_s / c.tera_e ) )
+    daf1 = 0.50ℯ^( ( c.x / 2.0c.α_x ) * ( 1 - √( 1.0 + ( ( 4.0c.decay_coeff * c.α_x * R ) / c.v_e ) ) ) )
     #daf1 = exp( ( c.x / ( 2c.α_x ) ) )
     #daf2 = erf( c.s_w / ( 4√( c.α_y * c.x ) ) )
-    daf21 = erf( ( c.y + 0.5c.s_w ) / ( 2√( c.α_y * c.x ) ) )
-    daf22 = erf( ( c.y - 0.5c.s_w ) / ( 2√( c.α_y * c.x ) ) )
+    daf21 = erf( ( c.y + 0.5c.s_w ) / ( 2.0√( c.α_y * c.x ) ) )
+    daf22 = erf( ( c.y - 0.5c.s_w ) / ( 2.0√( c.α_y * c.x ) ) )
     #daf_prova = erf( ( c.y + 0.5c.s_w ) / ( 2√( c.α_y * c.x ) ) )
     daf3 = daf21 - daf22
     DAF_tot = daf1 * daf3
@@ -109,19 +108,17 @@ end
 
 
 function calc_DAF_ispra2!(c::DAF)
-    if c.α_x == 0
+    if c.α_x == 0.0
       c.α_x = 0.1c.x
     end
-    if c.α_y == 0
-      c.α_y = c.α_x / 3
+    if c.α_y == 0.0
+      c.α_y = c.α_x / 3.0
     end
-    
     #daf1 = ( c.x / 2c.α_x ) * ( 1 - √( 1 + ( ( 4c.decay_coeff * c.α_x * c.R ) / c.v_e ) ) )
     daf1 = exp( c.x / ( 2c.α_x ) * 0 )
     #daf1e = exp(daf1)
     daf2 = erf( c.s_w / ( 4√( c.α_y * c.x ) ) )
     c.DAF = daf1 * daf2
-  
     return c.DAF
 end
 
@@ -228,11 +225,11 @@ end
 
 
 """
-    compute_result!( dtm::AbstractArray, r0::Integer, c0::Integer, ri::Integer, ci::Integer, daf::DAF )
+    compute_result!( dtm::AbstractArray, r0::Int64, c0::Int64, ri::Int64, ci::Int64, daf::DAF )
 
 Given the raster `dtm` and the indexes (`r0`, `c0`) of the source, modify the postion values of object `daf` and return the concentration at indexes (`ri`, `ci`)
 """
-function compute_result!( dtm::AbstractArray, r0::Integer, c0::Integer, ri::Integer, ci::Integer, daf::DAF )
+function compute_result!( dtm::AbstractArray, r0::Int64, c0::Int64, ri::Int64, ci::Int64, daf::DAF )
     daf.x, daf.y = Functions.compute_position(dtm, r0, c0, ri, ci, daf.acquifer_flow_direction)
     return calcDAF!(daf)
 end
@@ -240,35 +237,35 @@ end
 
 
 """
-    function leach( source, contaminants, concentrations, aquifer_depth, acquifer_flow_direction, mean_rainfall, texture, resolution::Integer, time::Integer=1,
-                    orthogonal_extension::Real=10000.0, soil_density::Real=1.70, source_thickness::Real=1.0, darcy_velocity::Real=0.000025, mixed_zone_depth::Real=1.0,
-                    decay_coeff::Real=0.0, algorithm::Symbol=:fickian, option::Symbol=:continuous, output_path::AbstractString=".\\output_model_daf.tiff" )
+    function leach( source::ArchGDAL.IDataset, contaminants, concentrations::Vector{Float64}, aquifer_depth::Float64, acquifer_flow_direction::Int64, mean_rainfall::Float64, texture, resolution::Int64, time::Int64=1,
+                    orthogonal_extension::Float64=10000.0, soil_density::Float64=1.70, source_thickness::Float64=1.0, darcy_velocity::Float64=0.000025, mixed_zone_depth::Float64=1.0,
+                    decay_coeff::Float64=0.0, algorithm::Symbol=:fickian, option::Symbol=:continuous, output_path::AbstractString=".\\output_model_daf.tiff" )
 
 Run the simulation of leaching and dispersion of contaminants in an aquifier, returning a map of the possible worst case spreading of the contaminants
 
 # Arguments
-- `source`: source point of the contaminants.
+- `source::ArchGDAL.IDataset`: source point of the contaminants.
 - `contaminants`: type of substance.
-- `concentrations`: concentration of the contaminants at the source.
-- `aquifer_depth`: depth of the aquifier in meters.
-- `acquifer_flow_direction`: angle of direction of the flow in degrees.
-- `mean_rainfall`: average rainfall volume.
+- `concentrations::Vector{Float64}`: concentration of the contaminants at the source.
+- `aquifer_depth::Float64`: depth of the aquifier in meters.
+- `acquifer_flow_direction::Int64`: angle of direction of the flow in degrees.
+- `mean_rainfall::Float64`: average rainfall volume.
 - `texture`: type of terrain at the source.
-- `resolution::Integer`: dimension of a cell for the analysis.
-- `time::Integer=1`: starting time.
-- `orthogonal_extension::Real=10000.0`: X
-- `soil_density::Real=1.70`: density of the terrain.
-- `source_thickness::Real=1.0`: thickness of the terrain layer at the source.
-- `darcy_velocity::Real=0.000025`: X
-- `mixed_zone_depth::Real=1.0`: X
-- `decay_coeff::Real=0.0`: X
+- `resolution::Int64`: dimension of a cell for the analysis.
+- `time::Int64=1`: starting time.
+- `orthogonal_extension::Float64=10000.0`: X
+- `soil_density::Float64=1.70`: density of the terrain.
+- `source_thickness::Float64::Float64=1.0`: thickness of the terrain layer at the source.
+- `darcy_velocity::Float64=0.000025`: X
+- `mixed_zone_depth::Float64=1.0`: X
+- `decay_coeff::Float64=0.0`: X
 - `algorithm::Symbol=:fickian`: type of algorithm to be used.
 - `option::Symbol=:continuous`: second option to define the kind o algorithm to use.
 - `output_path::AbstractString=".\\output_model_daf.tiff": output file path. 
 """
-function leach( source, contaminants, concentrations, aquifer_depth, acquifer_flow_direction, mean_rainfall, texture, resolution::Integer, time::Integer=1,
-                orthogonal_extension::Real=10000.0, soil_density::Real=1.70, source_thickness::Real=1.0, darcy_velocity::Real=0.000025, mixed_zone_depth::Real=1.0,
-                decay_coeff::Real=0.0, algorithm::Symbol=:fickian, option::Symbol=:continuous, output_path::AbstractString=".\\output_model_daf.tiff" )
+function run_leach( source::ArchGDAL.IDataset, contaminants, concentrations::Vector{Float64}, aquifer_depth::Float64, acquifer_flow_direction::Int64, mean_rainfall::Float64, texture, resolution::Integer, time::Integer=1,
+                orthogonal_extension::Float64=10000.0, soil_density::Float64=1.70, source_thickness::Float64=1.0, darcy_velocity::Float64=0.000025, mixed_zone_depth::Float64=1.0,
+                decay_coeff::Float64=0.0, algorithm::Symbol=:fickian, option::Symbol=:continuous, output_path::AbstractString=".\\output_model_daf.tiff" )
 
     if algorithm ∉ [:fickian, :domenico]
         throw(DomainError(algorithm, "`algorithm` must either be `:fickian` or `:domenico`"))

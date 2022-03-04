@@ -1,6 +1,6 @@
 module GroundDataAA
 """
-Module for the download and processing of atmospheric data gathered by measuring stations located in Alto Adige, Italy
+Module for the download and processing of atmospheric data gathered by measuring stations located in Alto Adige, Italy.
 """
 #=
 Alto Adige:
@@ -24,6 +24,7 @@ using HTTP
 using JSONTables
 
 
+
 export getData,
        getRegionAttributes, getRegionIds, getRegionStationsInfo
 
@@ -32,15 +33,12 @@ export getData,
 """
     getRegionAttributes( [ type::Symbol=:METEO ] )
 
-Obtain the names of the columns of the region's dataframe required by `GroundData.createMap`'s `attributes` parameter to create
-`GroundData.standardize`'s `map` parameter
+Obtain the names of the columns of the region's dataframe required by `GroundData.createMap`'s `attributes` parameter to create `GroundData.standardize`'s `map` parameter.
 """
 function getRegionAttributes( type::Symbol=:METEO )
-    return type == :METEO ?
-               [ :DESC_I, :UNIT, :VALUE, nothing, :DATE, :LONG, :LAT, :ALT, nothing, nothing, :rmh ] :
-               type == :AIRQUALITY ?
-                   [ :MCODE, nothing, :VALUE, nothing, :DATE, :LONG, :LAT, nothing, :FLAGS, nothing ] :
-                   throw( DomainError( type, "`type` must be either `:METEO` OR `:AIRQUALITY`" ) )
+    return type == :METEO ? [ :DESC_I, :UNIT, :VALUE, nothing, :DATE, :LONG, :LAT, :ALT, nothing, nothing, :rmh ] :
+        type == :AIRQUALITY ? [ :MCODE, nothing, :VALUE, nothing, :DATE, :LONG, :LAT, nothing, :FLAGS, nothing ] :
+            throw(DomainError(type, "`type` must be either `:METEO` OR `:AIRQUALITY`."))
 end
 
 
@@ -48,11 +46,11 @@ end
 """
     getRegionAttributes( [ type::Symbol=:METEO ] )
 
-Obtain the names of the columns of the dataframe required for `GroundData.standardize`'s `bridge` parameter
+Obtain the names of the columns of the dataframe required for `GroundData.standardize`'s `bridge` parameter.
 """
 function getRegionIds( type::Symbol=:METEO )
     if type != :METEO && type != :AIRQUALITY
-        throw( DomainError( type, "`type` must be either `:METEO` OR `:AIRQUALITY`" ) )
+        throw(DomainError(type, "`type` must be either `:METEO` OR `:AIRQUALITY`."))
     end
     return :SCODE
 end
@@ -62,12 +60,11 @@ end
 """
     getRegionStationInfo( [ type::Symbol=:METEO  ] )
 
-Obtain the names of the columns of the region's stations dataframe required by `GroundData.createMap`'s `attributes` parameter to be used
-in `GroundData.generateUuidsTable`
+Obtain the names of the columns of the region's stations dataframe required by `GroundData.createMap`'s `attributes` parameter to be used in `GroundData.generateUuidsTable`.
 """
 function getRegionStationsInfo( type::Symbol=:METEO )
     if type != :METEO && type != :AIRQUALITY
-        throw( DomainError( type, "`type` must be either `:METEO` OR `:AIRQUALITY`" ) )
+        throw(DomainError(type, "`type` must be either `:METEO` OR `:AIRQUALITY`."))
     end
     return [ :SCODE, :NAME_I, :LONG, :LAT ]
 end
@@ -80,8 +77,8 @@ end
 Obtain data of category `type` and source of category `kind`.
 
 # Arguments
- - `type::Symbol=:METEO`: defines the type of data to be downloaded, it must either be `:METEO` or `:AIRQUALITY`.
- - `kind::Symbol=:STATIONS`: defines if the data to be downloaded has to regard information on the stations or their actual measurements, it must either be `:STATIONS` or `:SENSORS`.
+- `type::Symbol=:METEO`: defines the type of data to be downloaded, it must either be `:METEO` or `:AIRQUALITY`.
+- `kind::Symbol=:STATIONS`: defines if the data to be downloaded has to regard information on the stations or their actual measurements, it must either be `:STATIONS` or `:SENSORS`.
 """
 function getData(; type::Symbol=:METEO, kind::Symbol=:STATIONS )    
  # The URL changes based on the `type` and `kind` of the data to be retrieved
