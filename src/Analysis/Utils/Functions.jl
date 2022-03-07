@@ -93,10 +93,9 @@ end
     writeRaster( data::Array{Float32}, driver::agd.Driver, geotransform::Vector{Float64}, refsys::AbstractString, noData::Real, output_path::AbstractString=".\\raster.tiff", output::Bool=false )
 
 Given a NxMxH dimensional matrix `data`, create a raster file with H NxM bands as `output_path` file, with `refsys` and `geotransfrom` as spatial references,
-using `driver` to define the format.
-If `output` is set to true return the new raster, otherwise return nothing.  
+using `driver` to define the format.  
 """
-function writeRaster( data::Array{Float32}, driver::ArchGDAL.Driver, geotransform::Vector{Float64}, resolution::Real, refsys::AbstractString, noDataValue::Real, output_file_path::AbstractString=".\\raster.tiff", output::Bool=false )
+function writeRaster( data::Array{Float32}, driver::ArchGDAL.Driver, geotransform::Vector{Float64}, resolution::Real, refsys::AbstractString, noDataValue::Real, output_file_path::AbstractString=".\\raster.tiff" )
     rows, cols, bands = length(size(data)) < 3 ? (size(data)..., 1) : size(data) 
     res_raster = agd.create(output_file_path, driver=driver, width=rows, height=cols, nbands=bands, dtype=Float32)
     for i in 1:bands
@@ -105,11 +104,6 @@ function writeRaster( data::Array{Float32}, driver::ArchGDAL.Driver, geotransfor
     end
     agd.setgeotransform!(res_raster, geotransform)
     agd.setproj!(res_raster, refsys)
-    # NON SO QUANTO SIA NECESSARIO QUESTO IF
-    if !output
-        res_raster = nothing
-        GC.gc()
-    end
     return res_raster
 end
 
