@@ -96,15 +96,15 @@ end
 
 
 """
-    run_sediment( dtm::ArchGDAL.IDataset, source::ArchGDAL.IDataset, resolution::Int64, mean_flow_speed::Float64, mean_depth::Float64, x_dispersion_coeff::Float64, y_dispersion_coeff::Float64,
+    run_sediment( dtm_file::AbstractString, source_file::AbstractString, resolution::Int64, mean_flow_speed::Float64, mean_depth::Float64, x_dispersion_coeff::Float64, y_dispersion_coeff::Float64,
                   dredged_mass::Float64, flow_direction::Float64, mean_sedimentation_velocity::Float64, time::Int64, time_intreval::Int64,
                   current_oscillatory_amplitude::Int64=0, tide::Int64=0, output_path::AbstractString=".\\output_model_sediments.tiff" )
 
-Run a simulation of plumes of turbidity induced by dredging.
+Create and save as `output_path` a raster containing the results of model of plumes of turbidity induced by dredging.
 
 # Arguments
-- `dtm::ArchGDAL.IDataset`: raster of terrain.
-- `source::ArchGDAL.IDataset`: dredging source point.
+- `dtm_file::AbstractString`: path to the raster of terrain.
+- `source_file::AbstractString`: path to the shapefile containing the dredging source point.
 - `resolution::Int64`: size of a cell in meters.
 - `mean_flow_speed::Float64`: speed of the flowing water.
 - `mean_depth::Float64`: depth in meters.
@@ -119,19 +119,32 @@ Run a simulation of plumes of turbidity induced by dredging.
 - `tide::Int64=0`: value of tide.
 - `output_path::AbstractString=".\\output_model_sediments.tiff"`: path of the resulting raster.
 """
-                    #                                     v                      h                 dx                        dy                        q                   dir
-function run_sediment( dtm::ArchGDAL.IDataset, source::ArchGDAL.IDataset, resolution::Float64, mean_flow_speed::Float64, mean_depth::Float64, x_dispersion_coeff::Float64, y_dispersion_coeff::Float64, dredged_mass::Float64, flow_direction::Float64,
-                    #  w                                  t / time       dt                      u
-                       mean_sedimentation_velocity::Float64, time::Int64, time_intreval::Int64, current_oscillatory_amplitude::Int64=0, tide::Int64=0, output_path::AbstractString=".\\output_model_sediments.tiff" )
+function run_sediment( dtm_file::AbstractString, source_file::AbstractString, resolution::Float64, mean_flow_speed::Float64, mean_depth::Float64, x_dispersion_coeff::Float64,
+                       y_dispersion_coeff::Float64, dredged_mass::Float64, flow_direction::Float64, mean_sedimentation_velocity::Float64, time::Int64, time_intreval::Int64,
+                       current_oscillatory_amplitude::Int64=0, tide::Int64=0, output_path::AbstractString=".\\output_model_sediments.tiff" )
+#=
+    mean_flow_speed = v
+    mean_depth = h
+    x_dispersion_coeff = dx
+    y_dispersion_coeff = dy
+    dredged_mass = q
+    flow_direction = dir
+    mean_sedimentation_velocity = w
+    time = t / time
+    time_interval = dt
+    current_oscillatory_amplitude = u
+
+=#
 
  # messaggio+='ALGORITMO UTILIZZATO: Shao (Shao, Dongdong, et al. "Modeling dredging-induced turbidity plumes in the far field under oscillatory tidal currents." Journal of Waterway, Port, Coastal, and Ocean Engineering 143.3 (2016))\n\n'
 
-    geom = agd.getgeom(collect(agd.getlayer(source, 0))[1])
+    geom = agd.getgeom(collect(agd.getlayer(agd.read(source_file), 0))[1])
 
     if agd.geomdim(geom) != 0
         throw(DomainError(source, "`source` must be a point."))
     end
 
+    dtm = agd.read(dtm_file)
     refsys = agd.getproj(dtm)
 
     if agd.importWKT(refsys) != agd.getspatialref(geom)
@@ -189,7 +202,7 @@ function run_sediment( dtm::ArchGDAL.IDataset, source::ArchGDAL.IDataset, resolu
         end
     end
 
-    Functions.writeRaster(data, agd.getdriver("GTiff"), geotransform, resolution, refsys, agd.getnodatavalue(dtm), output_path, false)
+    Functions.writeRaster(data, agd.getdriver("GTiff"), geotransform, resolution, refsys, agd.getnodatavalue(dtm), output_path)
 end
 
 

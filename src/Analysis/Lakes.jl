@@ -63,11 +63,13 @@ end
 
 
 """
-    run_lake( source::ArchGDAL.IDataset, wind_direction::Int64, pollutant_mass::Float64, flow_mean_speed::Float64, resolution::Int64, hours::Int64,
+    run_lake( source_file::AbstractString, wind_direction::Int64, pollutant_mass::Float64, flow_mean_speed::Float64, resolution::Int64, hours::Int64,
               fickian_x::::Float64=0.05, fickian_y::::Float64=0.05, λk::::Float64=0.0, output_path::AbstractString=".\\lake_otput_model.tiff" )
 
+Create and save as `output_path` a raster containing the results of model of dispersion of pollutants in a lake.
+
 #Arguments
-- `source::ArchGDAL.IDataset`: source point of the contaminants.
+- `source_file::AbstractString`: path to the shapefile containing the source point of the contaminants.
 - `wind_direction::Int64`: direction of the wind as an angle in degrees.
 - `pollutant_mass::Float64`: initial mass of contaminants.
 - `flow_mean_speed::Float64`:  mean flow speed of the water.
@@ -78,9 +80,9 @@ end
 - `λk::::Float64=0.0`: X
 - `output_path::AbstractString=".\\lake_otput_model.tiff"`: output file path.
 """
-function run_lake( source::ArchGDAL.IDataset, wind_direction::Int64, pollutant_mass::Float64, flow_mean_speed::Float64, resolution::Int64, hours::Int64,
+function run_lake( source_file::AbstractString, wind_direction::Int64, pollutant_mass::Float64, flow_mean_speed::Float64, resolution::Int64, hours::Int64,
                    fickian_x::Float64=0.05, fickian_y::Float64=0.05, λk::Float64=0.0, output_path::AbstractString=".\\lake_otput_model.tiff" )
-    geom = agd.getgeom(collect(agd.getlayer(source, 0))[1])
+    geom = agd.getgeom(collect(agd.getlayer(agd.read(source_file), 0))[1])
     refsys = agd.toWKT(agd.getspatialref(geom))
     x_source = agd.getx(geom, 0)
     y_source = agd.gety(geom, 0)
@@ -135,7 +137,7 @@ function run_lake( source::ArchGDAL.IDataset, wind_direction::Int64, pollutant_m
             data[r-minR+1, c-minC+1] = values[match]
         end
     end
-    Functions.writeRaster(data, agd.getdriver("GTiff"), geotransform, resolution, refsys, noData, output_path, false)
+    Functions.writeRaster(data, agd.getdriver("GTiff"), geotransform, resolution, refsys, noData, output_path)
 end
 
 

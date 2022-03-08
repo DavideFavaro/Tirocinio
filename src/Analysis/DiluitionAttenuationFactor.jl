@@ -237,14 +237,14 @@ end
 
 
 """
-    function leach( source::ArchGDAL.IDataset, contaminants, concentrations::Vector{Float64}, aquifer_depth::Float64, acquifer_flow_direction::Int64, mean_rainfall::Float64, texture, resolution::Int64, time::Int64=1,
+    function leach( source_file::AbstractString, contaminants, concentrations::Vector{Float64}, aquifer_depth::Float64, acquifer_flow_direction::Int64, mean_rainfall::Float64, texture, resolution::Int64, time::Int64=1,
                     orthogonal_extension::Float64=10000.0, soil_density::Float64=1.70, source_thickness::Float64=1.0, darcy_velocity::Float64=0.000025, mixed_zone_depth::Float64=1.0,
                     decay_coeff::Float64=0.0, algorithm::Symbol=:fickian, option::Symbol=:continuous, output_path::AbstractString=".\\output_model_daf.tiff" )
 
-Run the simulation of leaching and dispersion of contaminants in an aquifier, returning a map of the possible worst case spreading of the contaminants
+Run the simulation of leaching and dispersion of contaminants in an aquifier, returning a map of the possible worst case spreading of the contaminants.
 
 # Arguments
-- `source::ArchGDAL.IDataset`: source point of the contaminants.
+- `source_file::AbstractString`: path to the shapefile containing source point of the contaminants.
 - `contaminants`: type of substance.
 - `concentrations::Vector{Float64}`: concentration of the contaminants at the source.
 - `aquifer_depth::Float64`: depth of the aquifier in meters.
@@ -263,10 +263,9 @@ Run the simulation of leaching and dispersion of contaminants in an aquifier, re
 - `option::Symbol=:continuous`: second option to define the kind o algorithm to use.
 - `output_path::AbstractString=".\\output_model_daf.tiff": output file path. 
 """
-function run_leach( source::ArchGDAL.IDataset, contaminants, concentrations::Vector{Float64}, aquifer_depth::Float64, acquifer_flow_direction::Int64, mean_rainfall::Float64, texture, resolution::Integer, time::Integer=1,
+function run_leach( source_file::AbstractString, contaminants, concentrations::Vector{Float64}, aquifer_depth::Float64, acquifer_flow_direction::Int64, mean_rainfall::Float64, texture, resolution::Integer, time::Integer=1,
                 orthogonal_extension::Float64=10000.0, soil_density::Float64=1.70, source_thickness::Float64=1.0, darcy_velocity::Float64=0.000025, mixed_zone_depth::Float64=1.0,
                 decay_coeff::Float64=0.0, algorithm::Symbol=:fickian, option::Symbol=:continuous, output_path::AbstractString=".\\output_model_daf.tiff" )
-
     if algorithm ∉ [:fickian, :domenico]
         throw(DomainError(algorithm, "`algorithm` must either be `:fickian` or `:domenico`"))
     end
@@ -275,7 +274,7 @@ function run_leach( source::ArchGDAL.IDataset, contaminants, concentrations::Vec
         throw(DomainError(option, "`option` must either be `:continuous` or `:pulse`"))
     end
 
-    geom = agd.getgeom(collect(agd.getlayer(source, 0))[1])
+    geom = agd.getgeom(collect(agd.getlayer(agd.read(source_file), 0))[1])
 
     if agd.geomdim(geom) != 0
         throw(DomainError(source, "`source` must be a point"))
@@ -364,10 +363,10 @@ function run_leach( source::ArchGDAL.IDataset, contaminants, concentrations::Vec
                 data[r-minR+1, c-minC+1] = values[match]
             end
         end
-        Functions.writeRaster(data, gtiff_driver, geotransform, resolution, refsys, noDataValue, path, false)
+        Functions.writeRaster(data, gtiff_driver, geotransform, resolution, refsys, noDataValue, path)
     end
 
-
+#=
  """" AGGIUNTA DI UN LAYER AL RASTER FINALE
     band = nothing
     target_ds = nothing
@@ -379,7 +378,7 @@ function run_leach( source::ArchGDAL.IDataset, contaminants, concentrations::Vec
     contatore_sostanza=0
     ef.list_result=[]
  """
-
+=#
 
 end
 

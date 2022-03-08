@@ -21,7 +21,7 @@ const agd = ArchGDAL
 
 
 
-function run_light( dem, source, resolution::Integer, intensity::Real, source_height::Real=0.0, observer_height::Real=1.75, rarefraction::Real=0.14286;
+function run_light( dem_file::AbstractString, source_file::AbstractString, resolution::Integer, intensity::Real, source_height::Real=0.0, observer_height::Real=1.75, rarefraction::Real=0.14286;
                     output_path::AbstractString=".\\light_intensity.tiff"  )
  # *VERSIONE CON INTENSITA'/FONTI MULTIPLE
  #= *
@@ -33,20 +33,22 @@ function run_light( dem, source, resolution::Integer, intensity::Real, source_he
         throw(DomainError(intenisty, "`intenisty` must be greater than 0."))
     end
 
-    src_layer = agd.getlayer(source, 0)
+    src_layer = agd.getlayer(agd.read(source_file), 0)
  # * src_geoms = agd.getgeom.(collect(src_layer))
     src_geom = agd.getgeom(collect(src_layer)[1])
 
  #= *
     if any( geom -> agd.geomdim(geom) != 0, src_geoms )
-        throw(DomainError(source, "`source` must be a point."))
+        throw(DomainError(source_file, "The shapefile must contain a series of points."))
     end
  =#
     if agd.geomdim(src_geom) != 0
-        throw(DomainError(source, "`source` must be a point."))
+        throw(DomainError(source_file, "The shapefile must contain a point."))
     end
 
     refsys = agd.getspatialref(src_layer)
+
+    dem = agd.readraster(dem_file)
 
     if agd.importWKT(agd.getproj(dem)) != refsys
         throw(DomainError("The reference systems are not uniform. Aborting analysis."))
@@ -83,7 +85,7 @@ function run_light( dem, source, resolution::Integer, intensity::Real, source_he
             end    
         end
     end
-    Functions.writeRaster( data, agd.getdriver("GTiff"), agd.getgeotransform(dem), resolution, refsys, noDataValue, output_path, false )
+    Functions.writeRaster(data, agd.getdriver("GTiff"), agd.getgeotransform(dem), resolution, refsys, noDataValue, output_path)
 end
 
 

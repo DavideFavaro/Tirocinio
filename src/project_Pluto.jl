@@ -24,6 +24,7 @@ begin
 	include(".\\Data Gathering\\SatelliteData.jl")
 	include(".\\Analysis\\DiluitionAttenuationFactor.jl")
 	include(".\\Analysis\\Lakes.jl")
+	include(".\\Analysis\\Noises.jl")
 	include(".\\Analysis\\Plumes.jl")
 	include(".\\Analysis\\Sediments.jl")
 end
@@ -39,8 +40,9 @@ begin
 	const stdt = SatelliteData
 
  # Data Analysis
-	const daf = DiluitionAttenuationFactor 
+	const daf = DiluitionAttenuationFactor
 	const lakes = Lakes
+	const noises = Noises
 	const plumes = Plumes
 	const sediments = Sediments
 
@@ -65,16 +67,19 @@ grdt.getGroundData( :METEO, grdt.AA, grdt.FVG, grdt.L, grdt.T, grdt.V )
 
 # ╔═╡ 4450aaa2-f049-44df-9bd7-43c13fdaaa3e
 # Digital Terrain Model, the main raster for the analysis, reppresents Veneto
-dtm = agd.read("..\\resources\\Analysis test data\\DTM_wgs84.tiff")
+begin
+	dtm_file = "..\\resources\\Analysis data\\DTM_wgs84.tiff"
+	dtm = agd.readraster(dtm_file)
+end
 
 # ╔═╡ b7699c02-99a1-4010-afc8-816da12e2c25
 # Create a source point to test the analysis functions
 begin
 	# Coordinates of the source
-	# lat, lon = (726454.9302346368, 5.025993899219433e6)
-	lat, lon = (11.930065824163105, 45.425861311724816) # WGS84
+	lat, lon = (726454.9302346368, 5.025993899219433e6)
+	#lat, lon = (11.930065824163105, 45.425861311724816) # WGS84
 	# Path to the source shapefile
-	source_dir = "..\\resources\\Analysis test data\\source_shapefile"
+	source_dir = "..\\resources\\Analysis data\\source_shapefile"
 	# Directory holding the `source` files
 	!isdir(source_dir) && mkdir(source_dir)
 	# Creation of a shapefile containing the point if not already existing
@@ -94,34 +99,45 @@ begin
 			end
 		end
 	end
-	source = agd.read(source_dir*"\\source.shp")
+	source_file = source_dir*"\\source.shp"
 end
 
 # ╔═╡ e960080e-05a5-480a-b27f-4149153300e4
 # Analysis functions execution
 
 # ╔═╡ 75eaae0c-55e9-4de5-9d31-f405f60f5863
-daf.run_leach(source, contaminants, concentrations, aquifer_depth,
+daf.run_leach(source_file, contaminants, concentrations, aquifer_depth,
 	acquifer_flow_direction, mean_rainfall, texture, 25, time,
 	orthogonal_extension, soil_density, source_thickness, darcy_velocity,
 	mixed_zone_depth, decay_coeff, algorithm,
-	"..\\resources\\Analysis test data\\Analysis results\\daf.tiff")
+	"..\\resources\\Analysis data\\Analysis results\\daf.tiff")
 
 # ╔═╡ f62e94e9-9c0c-4ed7-b87d-c0d958257d59
-lakes.run_lake(source, wind_direction, pollutant_mass, flow_mean_speed, 25,
+lakes.run_lake(source_file, wind_direction, pollutant_mass, flow_mean_speed, 25,
 	hours, fickian_x, fickian_y, λk,
-	"..\\resources\\Analysis test data\\Analysis results\\lake.tiff")
+	"..\\resources\\Analysis data\\Analysis results\\lake.tiff")
+
+# ╔═╡ 725222e8-960b-4618-8b3c-aa493caf7c16
+noises.run_noise(
+	dtm_file,
+	"A",
+	source_file,
+	293.15, 20.0, 110.0, 400.0
+)
 
 # ╔═╡ 7c9a6143-5331-42dd-9541-052d411bc284
-plumes.run_plume(dtm, source, stability, 25, wind_direction, concentration,
+plumes.run_plume(dtm_file, source_file, stability, 25, wind_direction, concentration,
 	wind_speed, stack_height, gas_speed, stack_diameter, smoke_temperature,
 	temperature, "..\\resources\\Analysis test data\\Analysis results\\plumes.tiff")
 
 # ╔═╡ 928d1a74-86a8-488c-92fd-b660794db328
-sediments.run_sediment(dtm, source, 25, mean_flow_speed, mean_depth,
+sediments.run_sediment(dtm_file, source_file, 25, mean_flow_speed, mean_depth,
 	x_dispersion_coeff, y_dispersion_coeff, dredged_mass, flow_direction,
 	mean_sedimentation_velocity, time, time_intreval, current_oscillatory_amplitude,
-	tide, "..\\resources\\Analysis test data\\Analysis results\\sediments.tiff")
+	tide, "..\\resources\\Analysis data\\Analysis results\\sediments.tiff")
+
+# ╔═╡ 58c02292-7c92-400d-acc5-86b79dd96162
+
 
 # ╔═╡ Cell order:
 # ╠═1769fb6b-c6a6-4ab4-91eb-8a1f245b7d21
@@ -139,5 +155,7 @@ sediments.run_sediment(dtm, source, 25, mean_flow_speed, mean_depth,
 # ╠═e960080e-05a5-480a-b27f-4149153300e4
 # ╠═75eaae0c-55e9-4de5-9d31-f405f60f5863
 # ╠═f62e94e9-9c0c-4ed7-b87d-c0d958257d59
+# ╠═725222e8-960b-4618-8b3c-aa493caf7c16
 # ╠═7c9a6143-5331-42dd-9541-052d411bc284
 # ╠═928d1a74-86a8-488c-92fd-b660794db328
+# ╠═58c02292-7c92-400d-acc5-86b79dd96162

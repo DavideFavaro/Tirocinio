@@ -55,10 +55,12 @@ end
 
 
 
-         #                                     min         min_end   min_int                           C / conc               radius
-function run_river( dem, slope, river, source, start_time, end_time, time_interval, resolution::Int64, concentration::Float64, mean_hydraulic_radius::Float64, fickian_x::Float64=0.05,
-                  # w / sez                         k                      manning
-                    hydraulic_section::Float64=1.0, decay_coeff::Float64=0, manning_coeff::Float64=0.05, output_path::AbstractString )
+         #                                                                                                                         min         min_end   min_int
+function run_river( dem_file::AbstractString, slope_file::AbstractString, river_file::AbstractString, source_file::AbstractString, start_time, end_time, time_interval,
+                  #                    C / conc                radius                                                   w / sez                         k
+                    resolution::Int64, concentration::Float64, mean_hydraulic_radius::Float64, fickian_x::Float64=0.05, hydraulic_section::Float64=1.0, decay_coeff::Float64=0.0,
+                  # manning
+                    manning_coeff::Float64=0.05, output_path::AbstractString )
     
  """ CONTROLLO SUI RASTER `dem` E `slope`
     if not self.slope.isValid():
@@ -70,20 +72,23 @@ function run_river( dem, slope, river, source, start_time, end_time, time_interv
         return False
  """
 
-    src_geom = agd.getgeom(collect(agd.getlayer(source, 0))[1])
+    src_geom = agd.getgeom(collect(agd.getlayer(agd.read(source_file), 0))[1])
 
-    if agd.geomdim(geom) != 0
-        throw(DomainError(source, "`source` must be a point"))
+    if agd.geomdim(src_geom) != 0
+        throw(DomainError(source_file, "The source shapefile must contain a point."))
     end
 
-   river_layer = agd.getlayer(river, 0)
+   river_layer = agd.getlayer(agd.read(river_file), 0)
+   river_geoms = agd.getgeom.(collect(river_layer))
 
- # IL CONTROLLO SI PUO' FARE SOLO SULLE SINGOLE FEATURES
-   if agd.geomdim(river) != 1
-      throw(DomainError(source, "`river` must be a line"))
+   if any( geom -> agd.geomdim(geom != 1), river_geoms)
+      throw(DomainError(river_file, "The river shapefile geometry in not valid."))
    end
 
-   refsys = agd.getspatialref(geom)
+   refsys = agd.getspatialref(src_geom)
+
+   dem = agd.read(dem_file)
+   slope = agd.read(slope_file)
 
    if agd.getspatialref(river_layer) != refsys || agd.importWKT(agd.getproj(slope)) != refsys || agd.importWKT(agd.getproj(dem)) != refsys
       throw(DomainError("The reference systems are not uniform. Aborting analysis."))

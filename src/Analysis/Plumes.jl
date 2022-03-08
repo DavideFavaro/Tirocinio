@@ -117,12 +117,14 @@ end
 
 
 """
-    run_plume( dem, source, stability::AbstractString, outdoor::AbstractString, resolution::Int64, wind_direction, concentration::Float64, wind_speed::Float64, stack_height::Float64, 
+    run_plume( dem_file::AbstractString, source_file::AbstractString, stability::AbstractString, outdoor::AbstractString, resolution::Int64, wind_direction, concentration::Float64, wind_speed::Float64, stack_height::Float64, 
                gas_speed::Float64=0.0, stack_diameter::Float64=0.0, smoke_temperature::Float64=0.0,  temperature::Float64=0.0, output_path::AbstractString=".\\otput_model_plume.tiff" )
 
+Create and save as `output_path` a raster containing the results of model of dispersion of airborne pollutants.
+
 # Arguments
-- `dem::ArchGDAL.IDataset`: raster containing the height of the terrain in each cell.
-- `source::ArchGDAL.IDataset`: source point of the plume.
+- `dem_file::AbstractString`: path to the raster containing the height of the terrain in each cell.
+- `source_file::AbstractString`: path to the shapefile containing the source point of the plume.
 - `stability::AbstractString`: information on the weather.
 - `outdoor::AbstractString`: 
 - `resolution::Int64`: size of the cell in meters.
@@ -137,16 +139,17 @@ end
 - `output_path::AbstractString=".\\otput_model_plume.tiff"`: output file path. 
 """
          #                                                                                                x_w             q / text_conc        u / wspeed        h_s / height
-function run_plume( dem::ArchGDAL.IDataset, source::ArchGDAL.IDataset, stability::AbstractString, outdoor::AbstractString, resolution::Int64, wind_direction, concentration::Float64, wind_speed::Float64, stack_height::Float64, 
+function run_plume( dem_file::AbstractString, source_file::AbstractString, stability::AbstractString, outdoor::AbstractString, resolution::Int64, wind_direction, concentration::Float64, wind_speed::Float64, stack_height::Float64, 
                   # v_s / gspeed         d_s / diameter            t_s / temp                    t_a / etemp
                     gas_speed::Float64=0.0, stack_diameter::Float64=0.0, smoke_temperature::Float64=0.0,  temperature::Float64=0.0, output_path::AbstractString=".\\otput_model_plume.tiff" )
 
-    geom = agd.getgeom( collect(agd.getlayer(source, 0))[1] )
+    geom = agd.getgeom( collect(agd.getlayer(agd.read(source_file), 0))[1] )
 
     if agd.geomdim(geom) != 0
-        throw(DomainError(source, "`source` must be a point"))
+        throw(DomainError(source_file, "The shapefile must contain a point."))
     end
 
+    dem = agd.read(dem_file)
     refsys = agd.getproj(dem)
 
     if agd.importWKT(refsys) != agd.getspatialref(geom)
@@ -202,7 +205,7 @@ function run_plume( dem::ArchGDAL.IDataset, source::ArchGDAL.IDataset, stability
         end
     end
 
-    Functions.writeRaster(data, agd.getdriver("GTiff"), geotransform, resolution, refsys, noData, output_path, false)
+    Functions.writeRaster(data, agd.getdriver("GTiff"), geotransform, resolution, refsys, noData, output_path)
 end
 
 

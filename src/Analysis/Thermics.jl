@@ -3,25 +3,26 @@ module Thermic
 
 
 """
-    run_thermic( dem::AbstractArray, source, river, source_temperature::Real, source_flow_rate::Real, river_temperature::Real, river_flow_rate::Real, output_path::AbstractString=".\\")
+    run_thermic( dem_file::AbstractString, source_file::AbstractString, river_file::AbstractString, source_temperature::Real, source_flow_rate::Real, river_temperature::Real, river_flow_rate::Real, output_path::AbstractString=".\\")
 """
-function run_thermic( dem::AbstractArray, source, river, source_temperature::Real, source_flow_rate::Real, river_temperature::Real, river_flow_rate::Real, output_path::AbstractString=".\\")
+function run_thermic( dem_file::AbstractString, source_file::AbstractString, river_file::AbstractString, source_temperature::Real, source_flow_rate::Real, river_temperature::Real, river_flow_rate::Real, output_path::AbstractString=".\\")
 
-    src_geom = agd.getgeom(collect(agd.getlayer(source, 0))[1])
+    src_geom = agd.getgeom(collect(agd.getlayer(agd.read(source_file), 0))[1])
 
     if agd.geomdim(src_geom) != 0
-        throw(DomainError(source, "`source` must be a point"))
+        throw(DomainError(source_file, "The shapefile must contain a point."))
     end
 
-    river_layer = agd.getlayer(river, 0)
+    river_layer = agd.getlayer(agd.read(river_file), 0)
 
  # IL CONTROLLO SULLA GEOMETRIA PUO' ESSERE FATTO SOLO SU FEATURES
     if agd.geomdim(river_layer) != 1
-        throw(DomainError(source, "`river` must be a line"))
+        throw(DomainError(river_file, "The river shapefile geometry in not valid."))
     end
 
-    layer = agd.getlayer(river, 0)
     refsys = agd.getspatialref(source)
+
+    dem = agd.read(dem_file)
 
     if agd.importWKT(agd.getproj(dem)) !=  refsys ||  agd.getspatialref(layer) != refsys
         throw(DomainError("The reference systems are not uniform. Aborting analysis." ))

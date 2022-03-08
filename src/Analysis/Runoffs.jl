@@ -528,23 +528,29 @@ wrg = weightedrastergraph(
 
 
 
-function run_runoff( dem, ccs, source, target, resolution::Integer, folder::AbstractString=".\\" )
+function run_runoff( dem_file::AbstractString, ccs_file::AbstractString, source_file::AbstractString, target_file::AbstractString, resolution::Int64, folder::AbstractString=".\\" )
+
+    source = agd.read(source_file)
 
     if agd.geomdim(source) != 0
-        throw(DomainError(source, "`source` must be a point"))
+        throw(DomainError(source_file, "The source shapefile must contain a single point."))
     end
 
+    target = agd.read(target_file)
+    ccs = agd.read(ccs_file)
     target_layer, landcover_layer = agd.getlayer([target, ccs], 0) 
 
     if agd.geomdim(target_layer) != 2
-        throw(DomainError(source, "`target` must be a polygon"))
+        throw(DomainError(target_file, " The target shapefile must contain a polygon."))
     end
 
     if agd.geomdim(landcover_layer) != 2
-        throw(DomainError(source, "Not a valid `landcover` geometry"))
+        throw(DomainError(ccs_file, "Not a valid landcover geometry."))
     end
 
     refsys = agd.getspatialref(source)
+    
+    dem = agd.read(dem_file)
 
     if agd.getspatialref(target_layer) != agd.getspatialref(source) || agd.getspatialref(landcover) != agd.getspatialref(source) || agd.getspatialref(dem) != agd.getspatialref(source)
         throw(DomainError("The reference systems are not uniform. Aborting analysis."))

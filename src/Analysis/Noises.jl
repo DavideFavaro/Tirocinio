@@ -1,4 +1,4 @@
-module Noise
+module Noises
 """
 Module for the modelling of noise pollution.
 """
@@ -24,7 +24,7 @@ const ga = GeoArrays
 const sf = Shapefile
 
 
-repeat!(A::AbstractVector, count::Integer ) = append!( A, repeat(A, count-1) )
+repeat!(A::AbstractVector, count::Int64 ) = append!( A, repeat(A, count-1) )
 # Functions to find the coordinates of the point resulting from the rotation of "(xp, yp)" by a angle "θ" around "(xc, yc)"
 rotate_x( xp, yp, xc, yc, θ ) = round( Int64, (xp - xc)cos(deg2rad(θ)) - (yp - yc)sin(deg2rad(θ)) + xc )
 rotate_y( xp, yp, xc, yc, θ ) = round( Int64, (xp - xc)sin(deg2rad(θ)) + (yp - yc)cos(deg2rad(θ)) + yc )
@@ -76,11 +76,11 @@ function atmospheric_absorption_loss( radius::Float64, height_m::Float32, relati
 end
 
 """
-    minmax( profile::AbstractArray{T, 1}, rel_h_src::Float32=0.0f0, rel_h_rec::Float32=0.0f0 )::Vector{T} where {T <: Float32}
+    minmax( profile::AbstractArray{T, 1}, rel_h_src::Float32=0.0f0, rel_h_rec::Float32=0.0f0 )::Vector{T} where {T <: Tuple{Float64, Float32}}
 
 Return the minimum and maximum peaks in `profile` coupled with their respective position in the vector.
 """
-function minmax( profile::AbstractArray{Tuple{Float64, Float64}}, rel_h_src::Float32=0.0f0, rel_h_rec::Float32=0.0f0 ) where {T <: Float32}
+function minmax( profile::AbstractArray{T, 1}, rel_h_src::Float32=0.0f0, rel_h_rec::Float32=0.0f0 ) where {T <: Tuple{Float64, Float32}}
     if length(profile) <= 1
         return [ (1, -rel_h_src), (1, -rel_h_rec) ]
     end
@@ -214,7 +214,7 @@ function qq( r::AbstractFloat, h::AbstractFloat, waveno::AbstractFloat, z::Compl
     w = ww(t)
 
     fr = 1.0 + √π * -imag(t*w)
-    fi = √π * AbstractFloat(t*w)
+    fi = √π * real(t*w)
 
     dumr = rr + (1.0 - rr) * fr + fi * ri
     dumi = ri + fi * (1.0 - rr) - ri * fr
@@ -241,7 +241,7 @@ function qq2( d::AbstractFloat, src_h::AbstractFloat, rec_h::AbstractFloat, freq
     w = ww(-t)
 
     fr = 1.0 + √π * imag(t*w)
-    fi = -√π * AbstractFloat(t*w)
+    fi = -√π * real(t*w)
 
     dumr = rr + (1.0 - rr) * fr + fi * ri
     dumi = ri + fi * (1.0 - rr) - ri * fr
@@ -253,8 +253,8 @@ end
 
 Run level topography propagation model for spectral sound levels.
 """
-function egal( d1::Float64, d2::Float64, src_h::Float32, rec_h::Float32, src_flow_res::Float32, rec_flow_res::Float32, e_wind_vel::AbstractFloat,
-               transition_height::AbstractFloat, turbulence::AbstractFloat, freq::Float64 )
+function egal( d1::Float64, d2::Float64, src_h::Float32, rec_h::Float32, src_flow_res::Float32, rec_flow_res::Float32, e_wind_vel::Float64, transition_height::Float64,
+               turbulence::Float64, freq::Float64 )
  #=
     arg1  = d1
     arg2  = d2
@@ -376,8 +376,7 @@ end
 
 Run mixed terrain propagation model.
 """
-function varysurf( dists::AbstractArray{T1, 1}, ground_type::AbstractArray{T2, 1}, src_h::Float32, rec_h::Float32, soft_atten::AbstractFloat,
-                   hard_atten::AbstractFloat ) where {T1 <: Float64, T2 <:Float32}
+function varysurf( dists::AbstractArray{T1, 1}, ground_type::AbstractArray{T2, 1}, src_h::Float32, rec_h::Float32, soft_atten::AbstractFloat, hard_atten::AbstractFloat ) where {T1 <: Float64, T2 <:Float32}
     drefl = src_h * dists[end] / (src_h + rec_h)
 
     srcInf = ground_type[1] == Soft ?
@@ -410,7 +409,7 @@ function varysurf( dists::AbstractArray{T1, 1}, ground_type::AbstractArray{T2, 1
     return sum / denom
 end
 
-function fres( y::AbstractFloat )::Complex
+function fres( y::AbstractFloat )
     c = 0.797885
     x = c * y
     f = (1.0 + 0.962x) / (2.0 + 1.792x + 3.104x^2 )
@@ -434,7 +433,7 @@ function diffraction!( aalast::Ref{Float32}, r1::AbstractFloat, a::AbstractFloat
     return df * ℯ^complex(0.0, -xv) * fres(√xv) * complex(0.0, -2.0√xv)
 end
 
-function calc_mirror( locs, points; source::Bool )
+function calc_mirror( locs::Float64, points::AbstractArray{T}; source::Bool ) where {T <: Tuple{Float64, Float32}}
     i, j, l = source ? (3,2,1) : (3,4,5) 
 
     # Distance from image to top of hill
@@ -462,12 +461,11 @@ function calc_mirror( locs, points; source::Bool )
 end
 
 """
-    bakkernn( hills::AbstractArray{T1, 1}, src_loc::AbstractArray{T2,}, rec_loc::AbstractArray{T2, 1}, src_flow_res::AbstractArray{T1, 1}, ber_flow_res::AbstractArray{T1, 1}, rec_flow_res::AbstractArray{T1, 1}, freq::Float64 )
+    bakkernn( hills::AbstractArray{T, 1}, src_loc::AbstractArray{T,}, rec_loc::AbstractArray{T, 1}, src_flow_res::Float32, ber_flow_res::Float32, rec_flow_res::Float32, freq::Float64 ) where {T <: Tuple{Float64, Float32}}
 
 Run hill topogrphy propagation model for spectral sound levels.
 """
-function bakkernn( hills::AbstractArray{T1, 1}, src_loc::AbstractArray{T2,}, rec_loc::AbstractArray{T2, 1}, src_flow_res::AbstractArray{T1, 1},
-                   ber_flow_res::AbstractArray{T1, 1}, rec_flow_res::AbstractArray{T1, 1}, freq::Float64 ) where {T1 <: Float32, T2 <: AbstractFloat}
+function bakkernn( hills::AbstractArray{T, 1}, src_loc::AbstractArray{T, 1}, rec_loc::AbstractArray{T, 1}, src_flow_res::Float32, ber_flow_res::Float32, rec_flow_res::Float32, freq::Float64 ) where {T <: Tuple{Float64, Float32}}
     # Delany-Bazley under source, berm and reciver
     dbs = delbaz.( freq, [ src_flow_res, ber_flow_res, rec_flow_res ] )
     waveno = 2.0 * π * freq / 340.0
@@ -641,8 +639,7 @@ end
 
 Run valley topography propagation model for spectral sound levels.
 """
-function dal( first_second_dist::Float64, second_third_dist::Float64, src_h::Float32, rec_h::Float32, src_slope_α::Float64, flow_res1::Float32,
-              flow_res2::Float32, freq::Float64 )
+function dal( first_second_dist::Float64, second_third_dist::Float64, src_h::Float32, rec_h::Float32, src_slope_α::Float64, flow_res1::Float32, flow_res2::Float32, freq::Float64 )
     # Delany-Bazley for source and receiver leg
     dbs = delbaz.( freq, [flow_res1, flow_res2] )
     waveno = 2.0 * π * freq / 340.0
@@ -713,20 +710,19 @@ function dal( first_second_dist::Float64, second_third_dist::Float64, src_h::Flo
 end
 
 """
-    onCut( distances::Union{Vector{T1}, SubArray{T1}}, heights::Union{Vector{T2}, SubArray{T2}}, impdcs::Union{Vector{T2}, SubArray{T2}}, src_h::AbstractFloat, rec_h::AbstractFloat, nfreq::Int64, freqs::Vector{Int64} ) where {T1 <: Int64, T2 <: Float32}
+    onCut( distances::AbstractArray{T1, 1}, heights::AbstractArray{T2, 1}, impdcs::AbstractArray{T2}, src_h::Float32, rec_h::Float32, nfreq::Int64, freqs::AbstractArray{T1, 1} ) where {T1 <: Float64, T2 <: Float32}
 
 Return the attenuation of a sound along a terrain cut reppresented by vectors `distances`, `heights` and `impedences`. 
 """
-function onCut( distances::AbstractArray{T1, 1}, heights::AbstractArray{T2, 1}, impdcs::AbstractArray{T2}, src_h::AbstractFloat,
-                rec_h::AbstractFloat, nfreq::Int64, freqs::AbstractArray{T1, 1} ) where {T1 <: Float64, T2 <: Float32}
+function oneCut( distances::AbstractArray{T1, 1}, heights::AbstractArray{T2, 1}, impdcs::AbstractArray{T2}, src_h::Float32, rec_h::Float32, nfreq::Int64, freqs::AbstractArray{T1, 1} ) where {T1 <: Float64, T2 <: Float32}
 
     ihard = 0
     isoft = 0 
-    flow_ress = [0.0, 0.0]
+    flow_ress = [0.0f0, 0.0f0]
     atten = 0.0
     attenuations = Vector{Float64}()
-    profile = Vector{Tuple{Float64, Float64}}()
-    flowpr = Vector{Tuple{Float64, Float64}}()
+    profile = Vector{Tuple{Float64, Float32}}()
+    flowpr = Vector{Tuple{Float64, Float32}}()
     ignd = Vector{Int64}()
 
 
@@ -764,12 +760,12 @@ function onCut( distances::AbstractArray{T1, 1}, heights::AbstractArray{T2, 1}, 
     # Max point (second point)
     points[2] = minmax( profile, src_h, rec_h )[2]
     # Min point near source (first point)
-    points[1] = minmax( profile[ 1:points[2][1] ], src_h, 0.0 )[1]
+    points[1] = minmax( profile[ 1:points[2][1] ], src_h, 0.0f0 )[1]
     # Min point near receiver (third point)
     ntemp = length(profile) - points[2][1]
     #   xs = [ point[1] for point in profile[ points[2][1]+1:ntemp ] ] 
     #   res = minmax( xs, 0.0, rec_h )[1]
-    res = minmax( profile[ points[2][1]+1:ntemp ], 0.0, rec_h )[1]
+    res = minmax( profile[ points[2][1]+1:ntemp ], 0.0f0, rec_h )[1]
     points[3] = ( points[2][1] - 1 + res[1], res[2] )
 
     hillxz = [ profile[1] ]
@@ -830,15 +826,14 @@ function onCut( distances::AbstractArray{T1, 1}, heights::AbstractArray{T2, 1}, 
         d = √( (ax-ox)^2 + (ay-oy)^2 )
 
         for j in 1:nfreq
-            duml = 0.0
             if ihard > 0
     # NON MI E' CHIARO IL SENSO DI "duml"
-                duml, atten = egal( d/2, d/2, src_h, rec_h, flow_ress[2], flow_ress[2], 0.0, 0.0, 0.0, freqs[j], duml )
+                atten = egal( d/2, d/2, src_h, rec_h, flow_ress[2], flow_ress[2], 0.0, 0.0, 0.0, freqs[j])[2]
                 atten = attenh
             end
             if isoft > 0
     # NON MI E' CHIARO IL SENSO DI "duml"
-                duml, attens = egal( d/2, d/2, src_h, rec_h, flow_ress[1], flow_ress[1], 0.0, 0.0, 0.0, freqs[j], duml )
+                attens = egal( d/2, d/2, src_h, rec_h, flow_ress[1], flow_ress[1], 0.0, 0.0, 0.0, freqs[j])[2]
                 atten = attens
             end
             if ihard > 0 && isoft > 0
@@ -946,12 +941,12 @@ end
 
 # Based on "https://www.geeksforgeeks.org/dda-line-generation-algorithm-computer-graphics/"
 """
-    DDA( dtm::GeoArrays.GeoArray{Float32}, impedences::GeoArrays.GeoArray{Float32}, r0::Integer, c0::Integer, rn::Integer, cn::Integer )
+    DDA( dtm::GeoArrays.GeoArray{Float32}, impedences::GeoArrays.GeoArray{Float32}, r0::Int64, c0::Int64, rn::Int64, cn::Int64 )
 
 Digital Differential Analyzer, rasterizes a line from indexes (`r0`, `c0`) to (`rn`,`cn`) returning all the cells in `dtm` and `impedences` (The two rasters must
 contain the heights and the resistivity concerning the same terrain) crossed by the line.
 """
-function DDA( dtm::GeoArrays.GeoArray{Float32}, impedences, r0::Integer, c0::Integer, rn::Integer, cn::Integer )
+function DDA( dtm::GeoArrays.GeoArray{Float32}, impedences, r0::Int64, c0::Int64, rn::Int64, cn::Int64 )
     Δr = rn - r0
     Δc = cn - c0
     steps = max( abs(Δr), abs(Δc) )
@@ -976,7 +971,7 @@ end
 
 
 
-
+#=
 function ground_loss( dtm::GeoArrays.GeoArray{Float32}, x0::Float64, y0::Float64, frequency::Int64, noData::Float32 )
     # Cell dimensions
     Δx::Float64, Δy::Float64 = ( ga.coords( dtm, size(dtm)[1:2] ) .- ga.coords( dtm, [1,1] ) ) ./ size(dtm)[1:2]
@@ -1175,36 +1170,48 @@ function noise_level( dtm::GeoArrays.GeoArray{Float32}, x0::Float64, y0::Float64
     end
     return intenisty_matrix 
 end
+=#
 
 
-src = sf.Table("C:\\Users\\Lenovo\\Documents\\GitHub\\Tirocinio\\resources\\Analysis test data\\sat\\sette_sorelle.shp")
+"""
+    run_noise( dem_file::AbstractString, terrain_impedences::AbstractString, source_file::AbstractString, temperature_K::Float64, relative_humidity::Float64, dB::Float64, frequency::Float64 )
 
+Create and save as `output_path` a raster containing the results of model of dispersion of airborne pollutants.Run a simulation of plumes of turbidity induced by dredging.
 
+#Arguments
+- `dem_file::AbstractString`: path to the raster containing the height of the terrain in each cell.
+- `terrain_impedence_file::AbstractString`: path to the raster containing the terrain impedences.
+- `source_file::AbstractString`: path to the shapefile containing the source point of the noise.
+- `temperature_K::Float64`: outside mean temperature in kelvin. 
+- `relative_humidity::Float64`: relative humidity.
+- `dB::Float64`: sound intenisty in decibel.
+- `frequency::Float64`: frequency of the sound in hertz.
+"""
 # function noise_level( dtm::GeoArrays.GeoArray{Float32}, x0::Float64, y0::Float64, relative_humidity::Float64, temperature_k::FLoat64, frequency::Int64, noData::Float32 )
-function run_noise( dem::AbstractString, terrain_impedences::AbstractString, source::AbstractString, temperature_K::Float64, relative_humidity::Float64,
-                    dB::Float64, frequency::Float64 )
+function run_noise( dem_file::AbstractString, terrain_impedences_file::AbstractString, source_file::AbstractString, temperature_K::Float64, relative_humidity::Float64, intensity_dB::Float64, frequency::Float64 )
  # Input rasters and source point
-    dtm = replace( ga.read(dem), missing => -9999.0f0 )
-
+    noData = -9999.0f0
+    dB = intensity_dB - 32.0
+    dtm = replace( ga.read(dem_file), missing => noData )
 
  #=
-    impedences = replace( ga.read(terrain_impedences), missing => -9999.0f0 )
+    impedences = replace( ga.read(terrain_impedences_file), missing => -9999.0f0 )
  =#
     impedences = fill( 0.0f0, size(dtm) )
 
 
 
-    src = sf.Table(source)
+    src = sf.Table(source_file)
 
  # Coordinates of the source
-    x0 = src.geometry[1].points[1].x
-    y0 = src.geometry[1].points[1].y
+    x0 = src.geometry[1].x
+    y0 = src.geometry[1].y
  # Source cell
     r0, c0 = ga.indices(dtm, [x0, y0])
  # Source height
-    h0::Float32 = dtm[r0, c0][1]
+    h0 = dtm[r0, c0][1]
  # Dimensions of a cell
-    Δx::Float64, Δy::Float64 = ( ga.coords(dtm, size(dtm)[1:2]) .- ga.coords(dtm, [1,1]) ) ./ size(dtm)[1:2]
+    Δx, Δy = ( ga.coords(dtm, size(dtm)[1:2]) .- ga.coords(dtm, [1,1]) ) ./ size(dtm)[1:2]
  # Maximum radius according to transmission loss
     max_radius = ceil(10^(dB / 20))
  # Number of cell fitting the radius of the area of effect of the sound
@@ -1218,13 +1225,13 @@ function run_noise( dem::AbstractString, terrain_impedences::AbstractString, sou
   # Heights and impedences profiles
     heights_profiles = [ Float32[] for i in 1:8 ]
     impedences_profiles = deepcopy(heights_profiles)
-    coords_profiles = deepcopy(heights_profiles)
+    coords_profiles = [ Tuple{Float64, Float64}[] for i in 1:8 ]
     # The index will be used to place the profiles in the correct places
     i = 1
    # x axis
     for int in [ c0:-1:col_begin, c0:1:col_end ]::Vector{StepRange{Int64, Int64}}
         for c in int
-            push!(heigths_profiles[i], dtm[r0, c][1])
+            push!(heights_profiles[i], dtm[r0, c][1])
             push!(impedences_profiles[i], impedences[r0, c][1])
             push!( coords_profiles[i], Tuple{Float64, Float64}(ga.coords(dtm, [r0, c])) )
         end
@@ -1233,7 +1240,7 @@ function run_noise( dem::AbstractString, terrain_impedences::AbstractString, sou
    # y axis
     for int in [ r0:-1:row_begin, r0:1:row_end ]::Vector{StepRange{Int64, Int64}}
         for r in int
-            push!(heigths_profiles[i], dtm[r, c0][1])
+            push!(heights_profiles[i], dtm[r, c0][1])
             push!(impedences_profiles[i], impedences[r, c0][1])
             push!( coords_profiles[i], Tuple{Float64, Float64}(ga.coords(dtm, [r, c0])) )
         end
@@ -1242,8 +1249,8 @@ function run_noise( dem::AbstractString, terrain_impedences::AbstractString, sou
    # diagonals
     for int in [ 0:-1:-cell_num, 0:1:cell_num ]::Vector{StepRange{Int64, Int64}}
         for j in int
-            push!(heigths_profiles[i], dtm[r0 + j, c0 - j][1])
-            push!(heigths_profiles[i+2], dtm[r0 + j, c0 + j][1])
+            push!(heights_profiles[i], dtm[r0 + j, c0 - j][1])
+            push!(heights_profiles[i+2], dtm[r0 + j, c0 + j][1])
             push!(impedences_profiles[i], impedences[r0 + j, c0 - j][1])
             push!(impedences_profiles[i+2], impedences[r0 + j, c0 + j][1])
             push!( coords_profiles[i], Tuple{Float64, Float64}(ga.coords(dtm, [r0 + j, c0 - j])) )
@@ -1267,9 +1274,10 @@ function run_noise( dem::AbstractString, terrain_impedences::AbstractString, sou
 
 
  # Compute and insert the values for the trivial profiles( x and y axes and diagonal profiles )
-    @inbounds for (heights, impedences, coords) in zip(heights_profiles, impedences_profiles, coords_profiles)
+    @inbounds for (heights, impdcs, coords) in zip(heights_profiles, impedences_profiles, coords_profiles)
      # Vector holding the distances from the source to the current point
         dists = [ distance((x0, y0), coords[1]) ]
+     # The following cycle allows to compute the attenuations on each cell of the profiles
         for j in 2:length(heights)
          # Add distance of the current point from source to the distances vector
             push!( dists, distance((x0, y0), coords[j]) )
@@ -1280,13 +1288,13 @@ function run_noise( dem::AbstractString, terrain_impedences::AbstractString, sou
              # Sound intensity on a cell along trivial profiles
                 intenisty_matrix[ ( (r, c) .- (row_begin, col_begin) .+ 1 )... ] =
                  # Initial sound intensity
-                    db -
+                    dB -
                  # Loss of intensity due to propagation
-                    transmission_loss( dists[j] ) -
+                    #   transmission_loss( dists[j] ) -
                  # Loss of intensity due to the atmosphere
-                    atmospheric_loss( dists[j], heights[j], relative_humidity, temperature_K, db ) -
+                    #   atmospheric_absorption_loss( dists[j], heights[j], relative_humidity, temperature_K, frequency ) -
                   # Loss of intenisty due to the terrain
-                    onCut( view(dists, 1:j), view(heights, 1:j), view(impedences, 1:j), h0, heights[j], 1, [dB] )[end]
+                    oneCut( view(dists, 1:j), view(heights, 1:j), view(impdcs, 1:j), h0, heights[j], 1, [frequency] )[end]
             end
         end
     end
@@ -1294,22 +1302,24 @@ function run_noise( dem::AbstractString, terrain_impedences::AbstractString, sou
     @inbounds for point in endpoints
         for α in [0, 90, 180, 270]
          # Arrays of the heigths and the respective coordnates
-            heights, impedences, coords = DDA( dtm, r0, c0, rotate_point( point..., r0, c0, α )... )
+            heights, impdcs, coords = DDA( dtm, impedences, r0, c0, rotate_point( point..., r0, c0, α )... )
          # Compute array of the distances of each point of the profile from the source
             dists = [ distance((x0, y0), coords[1]) ]
-           # Array of the resulting attenuations for each point of a single profile
+         # Compute the array of the resulting attenuations for each point of a single profile
             for j in 2:length(heights)
                 push!( dists, distance((x0, y0), coords[j]) )
                 r, c = ga.indices( dtm, [ coords[j]... ] )
                 if dtm[r, c] != noData
                  # Sound intensity on the cell
                     intenisty_matrix[ ( (r, c) .- (row_begin, col_begin) .+ 1 )... ] =
+                     # Initial sound intensity
+                        dB -
                      # Loss of intensity due to propagation
-                        transmission_loss( dists[j] ) -
+                        #   transmission_loss( dists[j] ) -
                      # Loss of intensity due to the atmosphere
-                        atmospheric_loss( dists[j], heights[j], relative_humidity, temperature_K, frequency ) -
+                        #   atmospheric_absorption_loss( dists[j], heights[j], relative_humidity, temperature_K, frequency ) -
                      # Loss of intenisty due to the terrain
-                        onCut( view(dists, 1:j), view(heights, 1:j), view(impedences, 1:j), h0, heights[j], 1, [dB] )[end]
+                        oneCut( view(dists, 1:j), view(heights, 1:j), view(impdcs, 1:j), h0, heights[j], 1, [frequency] )[end]
                 end
             end
         end
@@ -1332,9 +1342,13 @@ end # module
 
 
 # ========================================================== TESTING =========================================================================================================
+#=
+# TESTING data
 
 frequency = 400.0
-x0, y0 = (726454.9302346368, 5.025993899219433e6)
+src = sf.Table(".\\resources\\Analysis data\\source_shapefile\\source.shp")
+x0 = src.geometry[1].x
+y0 = src.geometry[1].y
 dtm = replace( ga.read(".\\resources\\Analysis data\\DTM_32.tiff"), missing => -9999.0f0 )
 r0, c0 = ga.indices(dtm, [x0, y0])
 # Coordinate dei punti
@@ -1342,7 +1356,7 @@ x1, y1 = ga.coords(dtm, [1, 1])
 xn, yn = ga.coords(dtm, size(dtm)[1:2])
 # Dimensioni in metri di una cella
 Δx, Δy = (xn-x1, y1-yn) ./ size(dtm)[1:2]
-dB = 110 - 32
+dB = 110.0 - 32.0
 h0 = dtm[x0, y0][1]
 max_radius = ceil(10^(dB/20))
 cell_num = ceil( Int64, max_radius/Δx )
@@ -1350,6 +1364,10 @@ row_begin = r0 - cell_num
 row_end = r0 + cell_num
 col_begin = c0 + cell_num
 col_end = c0 - cell_num
+
+
+# TEST EXECUTION ON SINGLE PROFILES
+
 rn, cn = rotate_point( row_end, c0, r0, c0, 67 )
 heights, coords = DDA(dtm, r0, c0, rn, cn)
 dists = map( p -> distance((x0, y0), p), coords )
@@ -1360,6 +1378,26 @@ tlosses = [ transmission_loss(dists[j]) for j in 2:length(dists) ]
 aalosses = [ atmospheric_absorption_loss(dists[j], heights[j], 40.0, 293.15, frequency) for j in 2:length(dists) ]
 attens = [ onCut( view(dists, 1:j), view(heights, 1:j), view(impdcs, 1:j), h0, 1.75f0, 1, [frequency] )[end] for j in 2:length(dists) ]
 
+
+# TEST MATRIX GENERATION
+
+@code_warntype run_noise(".\\resources\\Analysis data\\DTM_32.tiff", "A", ".\\resources\\Analysis data\\source_shapefile\\source.shp", 293.15, 0.3, 110.0, 400.0 )
+mat = run_noise(
+    ".\\resources\\Analysis data\\DTM_32.tiff",
+    "A",
+    ".\\resources\\Analysis data\\source_shapefile\\source.shp",
+    293.15, 0.3, 110.0, 400.0
+)
+
+sort(unique(mat))
+min_val = minimum(mat)
+max_val = maximum(mat)
+replace!( mat, -9999.0f0 => 60.0f0  )
+rows, cols = size(mat)
+
+heatmap( 1:rows, 1:cols, dtm.A[row_begin:row_end, col_end:col_begin] )
+heatmap( 1:rows, 1:cols, mat )
+=#
 
 
 
@@ -1390,8 +1428,7 @@ cols, rows = size(cmat)
 heatmap( 1:cols, 1:rows, cmat )
 # DTM della stessa area del risultato
 heatmap( 1:637, 1:637, dtm.A[ 4500-(637÷2):4500+(637÷2), 5700-(637÷2):5700+(637÷2), 1 ] )
-
-
+=#
 #=
 attenuations_points = []
 for point in endpoints
@@ -1452,7 +1489,7 @@ end
 current()
 =#
 
-
+#=
 noData = -9999.f0
 mat = fill( noData, row_end - row_begin, col_end - col_begin )
 for point in endpoints
@@ -1481,7 +1518,7 @@ heatmap( 1:cols, 1:rows, cmat, c=cgrad([:blue, :white, :yellow, :red]) )
 
 cols, rows = size(dtm)
 heatmap( 1:cols, 1:rows, mat, c=cgrad([:blue, :white, :yellow, :red]) )
-
+=#
 
 #=
     #   x0, y0 = (710705.0, 5065493.0)
