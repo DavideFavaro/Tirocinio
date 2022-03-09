@@ -72,7 +72,7 @@ function atmospheric_absorption_loss( radius::Float64, height_m::Float32, relati
     term3 = t_tr^(-2.5) * ( 0.1068ℯ^(-3352 / temperature_k) / ( frN₂ + (frequency^2 / frN₂) ) ) 
     #   α = 8.686 * (frequency^2) * ( term1 + term2 + term3 )
     α = frequency^2 * (term1 + term2 + term3)
-    return α * radius / 100
+    return (α * radius) / 100
 end
 
 """
@@ -1264,7 +1264,7 @@ function run_noise( dem_file::AbstractString, terrain_impedences_file::AbstractS
         [ (row, col_end) for row in row_begin+1:r0 ]
     )
  # Matrix with the resulting intenisty levels on the area of interest
-    intenisty_matrix = fill( noData, row_end - row_begin + 1, col_end - col_begin + 1 )
+    intensity_matrix = fill( noData, row_end - row_begin + 1, col_end - col_begin + 1 )
 
 
  #=
@@ -1285,8 +1285,11 @@ function run_noise( dem_file::AbstractString, terrain_impedences_file::AbstractS
             r, c = ga.indices( dtm, [ coords[j]... ] )
          # If the cell should have a value
             if dtm[r, c] != noData
+                ground_loss = oneCut( view(dists, 1:j), view(heights, 1:j), view(impdcs, 1:j), h0, heights[j], 1, [frequency] )[end]
+                intensity_matrix[ ( (r, c) .- (row_begin, col_begin) .+ 1 )... ] = ground_loss < 0.0 ? noData : intensity_dB - transmission_loss(dists[j]) - ground_loss
+             #=
              # Sound intensity on a cell along trivial profiles
-                intenisty_matrix[ ( (r, c) .- (row_begin, col_begin) .+ 1 )... ] =
+                intensity_matrix[ ( (r, c) .- (row_begin, col_begin) .+ 1 )... ] =
                  # Initial sound intensity
                     dB -
                  # Loss of intensity due to propagation
@@ -1295,6 +1298,7 @@ function run_noise( dem_file::AbstractString, terrain_impedences_file::AbstractS
                     #   atmospheric_absorption_loss( dists[j], heights[j], relative_humidity, temperature_K, frequency ) -
                   # Loss of intenisty due to the terrain
                     oneCut( view(dists, 1:j), view(heights, 1:j), view(impdcs, 1:j), h0, heights[j], 1, [frequency] )[end]
+             =#
             end
         end
     end
@@ -1310,8 +1314,11 @@ function run_noise( dem_file::AbstractString, terrain_impedences_file::AbstractS
                 push!( dists, distance((x0, y0), coords[j]) )
                 r, c = ga.indices( dtm, [ coords[j]... ] )
                 if dtm[r, c] != noData
+                    ground_loss = oneCut( view(dists, 1:j), view(heights, 1:j), view(impdcs, 1:j), h0, heights[j], 1, [frequency] )[end]
+                    intensity_matrix[ ( (r, c) .- (row_begin, col_begin) .+ 1 )... ] = ground_loss < 0.0 ? noData : intensity_dB - transmission_loss(dists[j]) - ground_loss
+                 #=
                  # Sound intensity on the cell
-                    intenisty_matrix[ ( (r, c) .- (row_begin, col_begin) .+ 1 )... ] =
+                    intensity_matrix[ ( (r, c) .- (row_begin, col_begin) .+ 1 )... ] =
                      # Initial sound intensity
                         dB -
                      # Loss of intensity due to propagation
@@ -1319,12 +1326,12 @@ function run_noise( dem_file::AbstractString, terrain_impedences_file::AbstractS
                      # Loss of intensity due to the atmosphere
                         #   atmospheric_absorption_loss( dists[j], heights[j], relative_humidity, temperature_K, frequency ) -
                      # Loss of intenisty due to the terrain
-                        oneCut( view(dists, 1:j), view(heights, 1:j), view(impdcs, 1:j), h0, heights[j], 1, [frequency] )[end]
+                 =#  
                 end
             end
         end
     end
-    return intenisty_matrix 
+    return intensity_matrix 
 end
 
 
@@ -1345,11 +1352,14 @@ end # module
 #=
 # TESTING data
 
+intensity_dB = 110.0
+dB = intensity_dB - 32.0
 frequency = 400.0
 src = sf.Table(".\\resources\\Analysis data\\source_shapefile\\source.shp")
 x0 = src.geometry[1].x
 y0 = src.geometry[1].y
 dtm = replace( ga.read(".\\resources\\Analysis data\\DTM_32.tiff"), missing => -9999.0f0 )
+imp = fill(0.0f0, size(dtm))
 r0, c0 = ga.indices(dtm, [x0, y0])
 # Coordinate dei punti
 x1, y1 = ga.coords(dtm, [1, 1])
@@ -1368,15 +1378,22 @@ col_end = c0 - cell_num
 
 # TEST EXECUTION ON SINGLE PROFILES
 
-rn, cn = rotate_point( row_end, c0, r0, c0, 67 )
-heights, coords = DDA(dtm, r0, c0, rn, cn)
+rn, cn = rotate_point( row_end, c0, r0, c0, 167 )
+heights, impdcs, coords = DDA(dtm, imp, r0, c0, rn, cn)
 dists = map( p -> distance((x0, y0), p), coords )
-impdcs = zeros(Float32, length(dists))
+
+tlosses = [ transmission_loss(dists[j]) for j in 2:length(dists) ]
+aalosses = [ atmospheric_absorption_loss(dists[j], heights[j], 0.20, 293.15, frequency) for j in 2:length(dists) ]
+attens = [ max( 0.0, oneCut( view(dists, 1:j), view(heights, 1:j), view(impdcs, 1:j), h0, 1.75f0, 1, [frequency] )[end] for j in 2:length(dists) ]
+
+plot(tlosses)
+plot(aalosses)
+plot!(attens)
 
 plot( heights )
-tlosses = [ transmission_loss(dists[j]) for j in 2:length(dists) ]
-aalosses = [ atmospheric_absorption_loss(dists[j], heights[j], 40.0, 293.15, frequency) for j in 2:length(dists) ]
-attens = [ onCut( view(dists, 1:j), view(heights, 1:j), view(impdcs, 1:j), h0, 1.75f0, 1, [frequency] )[end] for j in 2:length(dists) ]
+plot!( intensity_dB .- tlosses )
+plot!( intensity_dB .- aalosses )
+plot!( intensity_dB .- attens )
 
 
 # TEST MATRIX GENERATION
@@ -1392,11 +1409,13 @@ mat = run_noise(
 sort(unique(mat))
 min_val = minimum(mat)
 max_val = maximum(mat)
-replace!( mat, -9999.0f0 => 60.0f0  )
+replace!( mat, -9999.0f0 => missing  )
 rows, cols = size(mat)
 
-heatmap( 1:rows, 1:cols, dtm.A[row_begin:row_end, col_end:col_begin] )
-heatmap( 1:rows, 1:cols, mat )
+plot( 1:rows, 1:cols, mat, st=:heatmap, line_z=mat, color=:viridis )
+
+area = dtm.A[row_begin:row_end, col_begin:col_end]
+plot( 1:rows, 1:cols, area, st=:heatmap, line_z=area, color=:viridis )
 =#
 
 

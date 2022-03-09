@@ -155,8 +155,9 @@ function run_plume( dem_file::AbstractString, source_file::AbstractString, stabi
     if agd.importWKT(refsys) != agd.getspatialref(geom)
         throw(DomainError("The reference systems are not uniform. Aborting analysis."))
     end
-  
- #= PENSO SIA ROBA UTILIZZATA IN DEI PRINT CHE SONO STATI RIMOSSI
+
+
+
     lst_fields = [
       "sf_ing",
       "sf_inal",
@@ -174,7 +175,7 @@ function run_plume( dem_file::AbstractString, source_file::AbstractString, stabi
         "Reference Concentration"
     ]
     toxic = Functions.substance_extract(contaminant, lst_fields, "..\\Library\\")
- =#
+
 
     x_source = agd.getx(geom, 0)
     y_source = agd.gety(geom, 0)

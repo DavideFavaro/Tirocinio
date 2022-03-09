@@ -116,12 +116,12 @@ Create and save as `output_path` a raster containing the results of model of plu
 - `time::Int64`: start time for the model.
 - `time_intreval::Int64`: length of an epoch.
 - `current_oscillatory_amplitude::Int64=0`: water oscillatory amplitude.
-- `tide::Int64=0`: value of tide.
+- `tide::Int64=0`: tidal cycle in hours.
 - `output_path::AbstractString=".\\output_model_sediments.tiff"`: path of the resulting raster.
 """
 function run_sediment( dtm_file::AbstractString, source_file::AbstractString, resolution::Float64, mean_flow_speed::Float64, mean_depth::Float64, x_dispersion_coeff::Float64,
                        y_dispersion_coeff::Float64, dredged_mass::Float64, flow_direction::Float64, mean_sedimentation_velocity::Float64, time::Int64, time_intreval::Int64,
-                       current_oscillatory_amplitude::Int64=0, tide::Int64=0, output_path::AbstractString=".\\output_model_sediments.tiff" )
+                       current_oscillatory_amplitude::Floa64=0.0, tide::Int64=0, output_path::AbstractString=".\\output_model_sediments.tiff" )
 #=
     mean_flow_speed = v
     mean_depth = h

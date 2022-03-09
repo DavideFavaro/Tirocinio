@@ -75,9 +75,9 @@ Create and save as `output_path` a raster containing the results of model of dis
 - `flow_mean_speed::Float64`:  mean flow speed of the water.
 - `resolution::Int64`: size of the cell for the analysis.
 - `hours::Int64`: time span of the analysis in hours.
-- `fickian_x::Float64=0.05`: X
-- `fickian_y::Float64=0.05`: X
-- `λk::::Float64=0.0`: X
+- `fickian_x::Float64=0.05`
+- `fickian_y::Float64=0.05`
+- `λk::::Float64=0.0`
 - `output_path::AbstractString=".\\lake_otput_model.tiff"`: output file path.
 """
 function run_lake( source_file::AbstractString, wind_direction::Int64, pollutant_mass::Float64, flow_mean_speed::Float64, resolution::Int64, hours::Int64,

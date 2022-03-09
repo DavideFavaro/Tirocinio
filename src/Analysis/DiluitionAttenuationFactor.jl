@@ -263,9 +263,11 @@ Run the simulation of leaching and dispersion of contaminants in an aquifier, re
 - `option::Symbol=:continuous`: second option to define the kind o algorithm to use.
 - `output_path::AbstractString=".\\output_model_daf.tiff": output file path. 
 """
-function run_leach( source_file::AbstractString, contaminants, concentrations::Vector{Float64}, aquifer_depth::Float64, acquifer_flow_direction::Int64, mean_rainfall::Float64, texture, resolution::Integer, time::Integer=1,
-                orthogonal_extension::Float64=10000.0, soil_density::Float64=1.70, source_thickness::Float64=1.0, darcy_velocity::Float64=0.000025, mixed_zone_depth::Float64=1.0,
-                decay_coeff::Float64=0.0, algorithm::Symbol=:fickian, option::Symbol=:continuous, output_path::AbstractString=".\\output_model_daf.tiff" )
+function run_leach( source_file::AbstractString, contaminants::Vector{String}, concentrations::Vector{Float64}, aquifer_depth::Float64, acquifer_flow_direction::Int64,
+                    mean_rainfall::Float64, texture::String, resolution::Integer, time::Int64=1, orthogonal_extension::Float64=10000.0, soil_density::Float64=1.70,
+                    source_thickness::Float64=1.0, darcy_velocity::Float64=0.000025, mixed_zone_depth::Float64=1.0, decay_coeff::Float64=0.0, algorithm::Symbol=:fickian,
+                    option::Symbol=:continuous, output_path::AbstractString=".\\output_model_daf.tiff" )
+
     if algorithm ∉ [:fickian, :domenico]
         throw(DomainError(algorithm, "`algorithm` must either be `:fickian` or `:domenico`"))
     end

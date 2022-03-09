@@ -106,31 +106,129 @@ end
 # Analysis functions execution
 
 # ╔═╡ 75eaae0c-55e9-4de5-9d31-f405f60f5863
+#=
+contaminants: (vettore di String)
+	nomi della sostanze da usare per estrarre i valori "c_henry", "koc_kd" dal database.
+concentrations: (vettore di Float64)
+	concentrazioni delle sostanze.
+aquifer_depth: (Float64)
+	profondità della falda.
+acquifer_flow_direction: (Int64)
+	angolo del flusso dell'aqua nella falda in gradi (credo?)
+mean_rainfall: (Float64)
+	pioggia media
+texture: (String)
+	credo sia la tipologia di terreno in cui filtrano gli inquinanti, da usare per estrarre i valori "tot_por", "c_water_avg", "effective_infiltration",
+	"por_eff", "grain" dal database.
+orthogonal_extension: (Float64)
+	estensione ortogonale?
+soil_density: (Float64)
+	densità del suolo
+source_thickness: (Float64)
+	spessore fonte?
+darcy_velocity: (Float64)
+	velocità di Darcy?
+mixed_zone_depth: (Float64)
+	profondità zoma mista?
+decay_coeff: (Float64)
+	coefficiente di decadimento?
+=#
 daf.run_leach(source_file, contaminants, concentrations, aquifer_depth,
-	acquifer_flow_direction, mean_rainfall, texture, 25, time,
+	acquifer_flow_direction, mean_rainfall, texture, 25, 1,
 	orthogonal_extension, soil_density, source_thickness, darcy_velocity,
-	mixed_zone_depth, decay_coeff, algorithm,
+	mixed_zone_depth, decay_coeff, :fickian, :continuous,
 	"..\\resources\\Analysis data\\Analysis results\\daf.tiff")
 
 # ╔═╡ f62e94e9-9c0c-4ed7-b87d-c0d958257d59
+#=
+wind_direction: (Int64)
+	direzione del vento come angolo in gradi.
+pollutant_mass: (Float64)
+	massa dell'inquinante.
+flow_mean_speed: (Float64)
+	velocità del flusso.
+hours: (Int64)
+	durata dell'analisi in ore.
+fickian_x: (Float64)
+	?
+fickian_y: (Float64)
+	?
+λk: (Float64)
+	?
+=#
 lakes.run_lake(source_file, wind_direction, pollutant_mass, flow_mean_speed, 25,
 	hours, fickian_x, fickian_y, λk,
 	"..\\resources\\Analysis data\\Analysis results\\lake.tiff")
 
 # ╔═╡ 725222e8-960b-4618-8b3c-aa493caf7c16
+#=
+"A" sostituisce il raster delle impedenze (nel codice uso una matrice contenente solo 0)
+temperatura atmosferica in kelvin
+umidità relativa (credo come percentuale in decimale)
+intensità del suono
+frequenza del suono
+=#
 noises.run_noise(
 	dtm_file,
 	"A",
 	source_file,
-	293.15, 20.0, 110.0, 400.0
+	293.15, 0.2, 110.0, 400.0
 )
 
 # ╔═╡ 7c9a6143-5331-42dd-9541-052d411bc284
+#=
+stability: (String)
+	Informazioni sul tempo meteorologico?
+	Usato per ottenere i campi "sf_ing", "sf_inal", "iur", "rfd_ing", "rfd_inal", "rfc" a questi corrispondono i messaggi "Slope Factor per ingestione", 
+	"Slope Factor per inalazione","Inhalation Unit Risk","Reference Dose per ingestione","Reference Dose per inalazione","Reference Concentration" dal database.
+outdoor: (String)
+	Usato insieme a "stability" per ottenere valori dal database. 
+wind_direction: (Int64)
+	direzione del vento come angolo.
+concentration: (Float64)
+	concentrazione della sostanza.
+wind_speed: (Float64)
+	velocità del vento.
+stack_height: (Float64)
+	altezza del camino.
+gas_speed: (Float64)
+	velocità dei fumi?
+stack_diameter: (Float64)
+	diametro del camino.
+smoke_temperature: (Float64)
+	temperatura dei fumi.
+temperature: (Float64)
+	temperatura dell'ambiente.
+=#
 plumes.run_plume(dtm_file, source_file, stability, 25, wind_direction, concentration,
 	wind_speed, stack_height, gas_speed, stack_diameter, smoke_temperature,
 	temperature, "..\\resources\\Analysis test data\\Analysis results\\plumes.tiff")
 
 # ╔═╡ 928d1a74-86a8-488c-92fd-b660794db328
+#=
+mean_flow_speed: (Float64)
+	velocità media della corrente.
+mean_depth: (Float64)
+	profondità media.
+x_dispersion_coeff: (Float64)
+	coefficiente di dispersione su x?
+y_dispersion_coeff: (Float64)
+	coefficiente di dispersione su y?
+dredged_mass: (Float64)
+	massa trasportata.
+flow_direction: (Int64)
+	direzione del flusso come angolo in gradi.
+mean_sedimentation_velocity: (Float64)
+	velocità di sedimentazione.
+time: (Int64)
+	tempo di inizio del modello.
+time_intreval: (Int64)
+	lunghezza di un'epoca.
+current_oscillatory_amplitude: (Float64)
+	ampiezza di oscillazione della corrente?
+tide: (Int64)
+	ciclo di marea in ore?.
+=#
 sediments.run_sediment(dtm_file, source_file, 25, mean_flow_speed, mean_depth,
 	x_dispersion_coeff, y_dispersion_coeff, dredged_mass, flow_direction,
 	mean_sedimentation_velocity, time, time_intreval, current_oscillatory_amplitude,
