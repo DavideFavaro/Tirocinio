@@ -21,6 +21,71 @@ const agd = ArchGDAL
 
 
 
+#= Based on 
+    https://github.com/thingless/viewshed/blob/master/server/algo.py
+
+function iter_to_runs( visibles, pixels )
+    cur_val = Inf
+    start_idx = nothing
+    out = []
+    for (i, val) in enumerate(vcat(visibles, [nothing]))
+        if cur_val != val
+            if cur_val == true
+                # we just ended a run of "True" values
+                append!( out, (pixels[start_idx], pixels[i - 1]) )
+            cur_val = val
+            start_idx = i
+    return out
+end
+
+function generate_line_segments( radius::Int64, center::Tuple{Int64, Int64} )
+    """Generate radii of a circle that are a fixed width apart on the circle.
+    Args:
+      radius: radius of the circle, in pixels
+      center: center of the circle (x, y) as tuple
+    Returns:
+      iterator of points (center, point on circle)
+    """
+    ang_step = SPACING / radius  # angle step in radians
+    for ang in 0:ang_step:2π
+        ang += ang_step
+        yield (center, (center[0] + radius * math.cos(ang), center[1] + radius * math.sin(ang)))
+    end
+end
+
+function generate_visible( src_height::Float32, heightmap::AbstractArray{Float32} )
+    """Trace a ray and determine if a region is viewable.
+    Args:
+      tower_height: the elevation in meters above sea level of your antenna
+      heightmap: an enumerable of heights in a given direction
+    Returns:
+      an enumerable of True/False for visibility
+    """
+
+    min_angle = -Inf
+    for (i, height) in enumerate(iterate(heightmap))
+        if tower_height - height == 0
+            angle_to_point = 0
+        elseif tower_height > height
+            angle_to_point = math.atan(i / (tower_height - height))
+        else
+            angle_to_point = atan( (height - tower_height) / i ) + π/2
+        end
+        if angle_to_point >= min_angle
+            min_angle = angle_to_point
+            yield True
+        else
+            yield False
+        end
+end
+=#
+
+
+function viewshed()
+end
+
+
+
 function run_light( dem_file::AbstractString, source_file::AbstractString, resolution::Integer, intensity::Real, source_height::Real=0.0, observer_height::Real=1.75, rarefraction::Real=0.14286;
                     output_path::AbstractString=".\\light_intensity.tiff"  )
  # *VERSIONE CON INTENSITA'/FONTI MULTIPLE

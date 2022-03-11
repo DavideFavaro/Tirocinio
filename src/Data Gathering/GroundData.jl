@@ -54,7 +54,7 @@ export getGroundData
 
 
 
-const regions_modules = [
+const regions_modules = Module[
     GroundDataAA,
     GroundDataFVG,
     GroundDataL,
@@ -278,3 +278,38 @@ end
 
 
 end # module
+
+
+
+#=
+#= Based on:
+    https://juliaearth.github.io/GeoStats.jl/stable/
+=#
+using GeoStats
+using Plots
+
+# Measurement stations' data 
+resmt, mresmt = getGroundData(:AIRQUALITY, AA, FVG, L, T, V)
+# Parameters measured by the stations
+unique(resmt.parameter)
+# All relative humidity measurements
+measurements = resmt[ resmt.parameter .== "Umidità relativa", : ]
+# All the measurement's values
+values = ( val = measurements.value, )
+# All the coordinates of the measurements
+coord = Tuple{Float64, Float64}[ (c[1], c[2]) for c in eachrow(measurements[:, [:longitude, :latitude]]) ]
+
+
+# georeference data
+D = georef(values, coord)
+# estimation domain
+G = CartesianGrid(100, 100) # NON CREDO SIA CORRETTO 100 COME VALORE
+# estimation problem
+problem = EstimationProblem(D, G, :val)
+# choose a solver from the list of solvers
+solver = Kriging( :val => ( variogram = GaussianVariogram(range=35.0), ) )
+# solve the problem
+solution = solve(problem, solver)
+# plot the solution
+contourf(solution, clabels=true)
+=#

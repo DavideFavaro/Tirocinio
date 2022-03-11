@@ -26,9 +26,9 @@ using CombinedParsers
 using CombinedParsers.Regexp
 using CSV
 using DataFrames
+using Dates
 using EzXML
 using HTTP
-using Revise
 
 
 
@@ -116,7 +116,7 @@ end
 Obtain the meteorological data from the stations in `ids`.
 """
 function getMeteoData( ids::AbstractVector{String} )
-    pages = [ String( HTTP.get("http://dati.meteotrentino.it/service.asmx/ultimiDatiStazione?codice=$id").body ) for id in ids ]
+    pages = String[ String( HTTP.get("http://dati.meteotrentino.it/service.asmx/ultimiDatiStazione?codice=$id").body ) for id in ids ]
     units = Dict(
         "temperatura" => "°C",
         "pioggia" => "mm",
@@ -128,10 +128,9 @@ function getMeteoData( ids::AbstractVector{String} )
     )
     xmlpages = EzXML.parsexml.(pages)
  #= OLD VERSION
-    data_vect = []
+    data_vect = Dict[]
     for (id, station) in zip(ids, xmlpages)
-        stn = collect( eachelement( root(station) ) )[5:end]
-        for attribute in stn
+        for attribute in collect( eachelement( root(station) ) )[5:end]
             for measurement in eachelement(attribute)
                 msrmt = collect( eachelement(measurement) )
                 for entry in msrmt[2:end]
@@ -157,12 +156,12 @@ function getMeteoData( ids::AbstractVector{String} )
             :attribute => attribute.name,
             :info => entry.name,
             :unit => units[entry.name],
-            :date => attribute[1].content
+            :date => first(eachelement(measurement)).content
         )
         for (id, station) in zip(ids, xmlpages)
-            for attribute in rest( eachelement(root(station)), 5 )
-                for measurement in eachelement(attribute)
-                    for entry in rest( eachelement(measurement), 2 )
+                for attribute in rest( collect(eachelement(root(station))), 5 )
+                    for measurement in eachelement(attribute)
+                        for entry in rest( collect(eachelement(measurement)), 2 )
     ])
     insertcols!( df, :rmh => "0m" )
     return df
@@ -247,10 +246,10 @@ function getData(; type::Symbol=:METEO, kind::Symbol=:STATIONS )
     end
 end
 
-#   ressta = getData( type=:METEO, source=:STATIONS )
-#   ressen = getData( type=:METEO, source=:SENSORS )
-#   ressta = getData( type=:AIRQUALITY, source=:STATIONS )
-#   ressen = getData( type=:AIRQUALITY, source=:SENSORS )
+#   ressta = getData( type=:METEO, kind=:STATIONS )
+#   ressen = getData( type=:METEO, kind=:SENSORS )
+#   ressta = getData( type=:AIRQUALITY, kind=:STATIONS )
+#   ressen = getData( type=:AIRQUALITY, kind=:SENSORS )
 
 
 
