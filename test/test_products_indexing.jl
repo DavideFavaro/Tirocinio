@@ -1,3 +1,7 @@
+module Products_indexing_test
+
+
+
 function count( maxNumber, count )
     if !isnothing( maxNumber ) && maxNumber > 1 && maxNumber < count
         count = maxNumber
@@ -25,13 +29,13 @@ function indexing2( start::Integer, val::Integer, maxNumber::Union{Nothing, Inte
     count = val
     println( "COUNT : ", count )
 
-#Check if `start` has a sensible value
+ #Check if `start` has a sensible value
     if start > val
         start = val - 1
     end
     println( "START : ",start)
 
-# Check if `maxNumber` has a sensible value
+ # Check if `maxNumber` has a sensible value
     if !isnothing( maxNumber ) && maxNumber > 0 && maxNumber < val
         count = maxNumber
     end
@@ -59,3 +63,7 @@ function indexing2( start::Integer, val::Integer, maxNumber::Union{Nothing, Inte
     println()
     println("THE END")
 end
+
+
+
+end # module

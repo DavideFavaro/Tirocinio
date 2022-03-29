@@ -247,6 +247,26 @@ end
 
 
 
+"""
+    saveTree( tree::SpatialIndexing.RTree{T, N}, output_file::AbstractString=".\\tree" ) where {T, N}
+
+Seve a the RTree `tree` as a file in the directory and with the name specified by `output_file` in Julia Data format 2 (JLD2).
+"""
+function saveTree( tree::SpatialIndexing.RTree{T, N}, output_file::AbstractString=".\\tree" ) where {T, N}
+    save_object(tree, output_file*".jld2")
+end
+
+
+
+"""
+    loadTree( tree_file::AbstractString )
+
+Load an Rtree saved as `tree_file`.
+"""
+function loadTree( tree_file::AbstractString )
+    return load_object(tree_file) 
+end
+
 
 
 #= ---------------------------- TREE TESTING [V] --------------------------------

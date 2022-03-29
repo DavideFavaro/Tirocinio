@@ -62,14 +62,7 @@ function calc_h!( p::Plume )
 end
 
 function calc_σ!( p::Plume )
-    σ_values = Functions.air_extract( p.stability, p.outdoor )
-    σy1 = σ_values[0]
-    σy2 = σ_values[1]
-    σyexp = σ_values[2]
-    σz1 = σ_values[3]
-    σz2 = σ_values[4]
-    σzexp = σ_values[5]
-
+    σy1, σy2, σyexp, σz1, σz2, σzexp = Functions.air_extract(p.stability, p.outdoor, ["sigmay1", "sigmay2", "sigmayexp", "sigmaz1", "sigmaz2", "sigmazexp"])[1, :]
     p.σy = ( σy1 * p.d ) / ( 1 + σy2 * p.d )^σyexp
     p.σz = ( σz1 * p.d ) / ( 1 + σz2 * p.d )^σzexp
     return p.σy, p.σz
@@ -155,27 +148,6 @@ function run_plume( dem_file::AbstractString, source_file::AbstractString, stabi
     if agd.importWKT(refsys) != agd.getspatialref(geom)
         throw(DomainError("The reference systems are not uniform. Aborting analysis."))
     end
-
-
-
-    lst_fields = [
-      "sf_ing",
-      "sf_inal",
-      "iur",
-      "rfd_ing",
-      "rfd_inal",
-      "rfc"
-    ]
-    lst_toxic_msg = [ 
-        "Slope Factor per ingestione", 
-        "Slope Factor per inalazione",
-        "Inhalation Unit Risk",
-        "Reference Dose per ingestione",
-        "Reference Dose per inalazione",
-        "Reference Concentration"
-    ]
-    toxic = Functions.substance_extract(contaminant, lst_fields, "..\\Library\\")
-
 
     x_source = agd.getx(geom, 0)
     y_source = agd.gety(geom, 0)

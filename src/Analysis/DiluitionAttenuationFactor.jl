@@ -294,7 +294,7 @@ function run_leach( source_file::AbstractString, contaminants::Vector{String}, c
     y_source = agd.gety(geom, 0)
     r_source, c_source = toIndexes(dtm, x_source, y_source)
 
-    tera_a, tera_w, effective_infiltration, tera_e, grain = Functions.texture_extract( texture, ["tot_por", "c_water_avg", "effective_infiltration", "por_eff", "grain"], ".\\..\\library\\" )
+    tera_a, tera_w, effective_infiltration, tera_e, grain = Functions.texture_extract(texture, ["tot_por", "c_water_avg", "effective_infiltration", "por_eff", "grain"])[1, :]
     if all(isempty.([tera_a, tera_w, effective_infiltration, tera_e, grain]))
         throw(DomainError("Analysis error, check input parameters"))
     end
@@ -309,7 +309,7 @@ function run_leach( source_file::AbstractString, contaminants::Vector{String}, c
         push!( points, [(r_source, c_source)] )
         push!( values, [concentrations[i]] )
 
-        h, kd = Functions.substance_extract( contaminants[i], ["c_henry", "koc_kd"], ".\\..\\library\\" )
+        h, kd = Functions.substance_extract(contaminants[i], ["c_henry", "koc_kd"])[1, :]
         if isempty(h) && isempty(kd)
             throw(DomainError("Analysis error, check input parameters"))
         end

@@ -281,35 +281,45 @@ end # module
 
 
 
-#=
-#= Based on:
-    https://juliaearth.github.io/GeoStats.jl/stable/
-=#
-using GeoStats
 using Plots
+using Shapefile
+using GeoStats
 
-# Measurement stations' data 
-resmt, mresmt = getGroundData(:AIRQUALITY, AA, FVG, L, T, V)
-# Parameters measured by the stations
+const shp = Shapefile
+
+
+
+stations = shp.Table("C:\\Users\\Lenovo\\Documents\\GitHub\\Tirocinio\\resources\\Analysis data\\Stazioni_Veneto\\Stazioni_Veneto.shp")
+comuni = shp.Table("C:\\Users\\Lenovo\\Documents\\GitHub\\Tirocinio\\resources\\Analysis test data\\c0104011_Comuni\\c0104011_Comuni.shp")
+
+
+resmt, mresmt = getGroundData( :METEO, AA, FVG, L, T, V )
+resaq, mresaq = getGroundData( :AIRQUALITY, AA, FVG, L, T, V )
+
+path = "C:\\Users\\Lenovo\\Documents\\GitHub\\Tirocinio\\resources\\Ground stations data\\25-03-22 - Post incendio"
+saveGroundData(path*"\\meteo_data.csv", resmt)
+saveGroundData(path*"\\airquality_data.csv", resaq)
+saveGroundData(path*"\\airquality_data_missing.csv", mresaq)
+
 unique(resmt.parameter)
+
 # All relative humidity measurements
 measurements = resmt[ resmt.parameter .== "Umidità relativa", : ]
 # All the measurement's values
-values = ( val = measurements.value, )
+values = ( humidity = measurements.value ./ 100, )
 # All the coordinates of the measurements
 coord = Tuple{Float64, Float64}[ (c[1], c[2]) for c in eachrow(measurements[:, [:longitude, :latitude]]) ]
-
-
-# georeference data
+# Georeference data
 D = georef(values, coord)
-# estimation domain
-G = CartesianGrid(100, 100) # NON CREDO SIA CORRETTO 100 COME VALORE
-# estimation problem
-problem = EstimationProblem(D, G, :val)
-# choose a solver from the list of solvers
+# Estimation domain
+G = CartesianGrid(100, 100)
+# Estimation problem
+problem = EstimationProblem(D, G, :humidity)
+# Solver from the list of solvers
 solver = Kriging( :val => ( variogram = GaussianVariogram(range=35.0), ) )
-# solve the problem
+# Solving problem
 solution = solve(problem, solver)
-# plot the solution
+# Solution plot
 contourf(solution, clabels=true)
+
 =#

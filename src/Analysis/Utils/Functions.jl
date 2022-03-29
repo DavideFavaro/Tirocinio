@@ -6,11 +6,14 @@ module Functions
 using ArchGDAL
 using CombinedParsers
 using CombinedParsers.Regexp
+using DataFrames
+using DBInterface
 using Rasters
+using SQLite
 
 
 
-export # substance_extract, texture_extract, air_extract, cn_extract, cn_list_extract, array2raster!, writeRaster!, applystyle,
+export substance_extract, texture_extract, air_extract, cn_extract, cn_list_extract,
        getindex, setindex!, convert, -,
        getOrigin, getCellDims, getSidesDistances, toCoords, toIndexes,
        compute_position, expand!
@@ -18,6 +21,8 @@ export # substance_extract, texture_extract, air_extract, cn_extract, cn_list_ex
 
 
 const agd = ArchGDAL
+const dbi = DBInterface
+const sql = SQLite
 
 
 
@@ -31,61 +36,100 @@ Base.setindex!( collection::Raster{T}, v, x::Float64, y::Float64, ) where {T} = 
 Base.convert(::Type{Int64}, n::AbstractFloat) = round(Int64, n)
 
 
-#=
-function substance_extract( substance_id, fields, dbloc = "" )
+"""
+    substance_extract( substance_id::Int64, fields::Vector{String}, db_path::String = "..\\..\\..\\resources\\Analysis data\\substance.db" )
+
+Extract values that describe a pollutant from the columns indicated by `fields` of the database at `db_path` where the id matches `substance_id`.
+"""
+function substance_extract( substance_id::Int64, fields::Vector{String}, db_path::String="" )
+    if  isempty(db_path)
+        db_path = occursin("src", @__DIR__) ? split(@__DIR__, "src")[1] : *(@__DIR__, "\\..\\")
+        db_path *= "resources\\Analysis data\\substance.db"
+    end
     # estrazione valori sostanze
-    db = sql.DB(dbloc*"substance.db")
-    sql_fields = join( fields, "," )
-    query_substance = sql.Stmt( db, "SELECT ? FROM substance WHERE id = ?AAA" )
-    sql.bind!( query_substance, [ sql_fields, substance_id ] )
-    results = dbi.execute( query_substance )
-    res_fields = [ x for x in results ]
-    return res_fields
+    db = sql.DB(db_path)
+    sql_fields = join(fields, ", ")
+    query_substance = sql.Stmt( db, "SELECT "*sql_fields*" FROM substance WHERE id = ?" )
+    results = dbi.execute(query_substance, [substance_id])
+    resdf = DataFrame(results)
+    return resdf
 end
 
-function texture_extract( texture_name, fields, dbloc = "" )
+
+"""
+    texture_extract( texture_name::String, fields::Vector{String}, db_path::String = "..\\..\\..\\resources\\Analysis data\\substance.db" )
+
+Extract values that describe a tipe of texture from the columns indicated by `fields` of the database at `db_path` where the column `name` matches the value of `textre_name`.
+"""
+function texture_extract( texture_name::String, fields::Vector{String}, db_path::String="" )
+    if  isempty(db_path)
+        db_path = occursin("src", @__DIR__) ? split(@__DIR__, "src")[1] : *(@__DIR__, "\\..\\")
+        db_path *= "resources\\Analysis data\\substance.db"
+    end
     # estrazione valori sostanze
-    db = sql.DB(dbloc*"substance.db")
-    sql_fields = join( fields, "," )
-    query_texture = sql.Stmt( db, "SELECT ? FROM texture WHERE nome LIKE ?" )
-    sql.bind!( query_texture, [ sql_fields, texture_name ] )
-    results = dbi.execute( query_texture ) 
-    res_fields = [ x  for x in results ]
-    return res_fields
+    db = sql.DB(db_path)
+    sql_fields = join(fields, ", ")
+    query_texture = sql.Stmt(db, "SELECT "*sql_fields*" FROM texture WHERE nome LIKE ?" )
+    results = dbi.execute(query_texture, [texture_name]) 
+    resdf = DataFrame(results)
+    return resdf
 end
 
-function air_extract( stability_class, outdoor, dbloc::AbstractString=*( @__DIR__, "\\") )
-    db = sql.DB(dbloc*"substance.db")
-    query_texture = sql.Stmt( db, "SELECT sigmay1, sigmay2, sigmayexp, sigmaz1, sigmaz2, sigmazexp FROM air_stability WHERE class LIKE ?NNN AND outdoor LIKE ?NNN" )
-    sql.bind!( query_texture, [ stability_class, outdoor ] )
-    results = dbi.execute( query_texture )
-    res_fields = [ x for x in results ]
-    return res_fields
+
+"""
+    air_extract( stability_class::String, outdoor_class::String, fields::Vector{String}, db_path::String="..\\..\\..\\resources\\Analysis data\\substance.db" )
+
+Extract values from the columns indicated by `fields` of the database at `db_path` where the outdoor and stability class match `outdoor_class` and `stability_class`.
+"""
+function air_extract( stability_class::String, outdoor_class::String, fields::Vector{String}, db_path::String="" )
+    if  isempty(db_path) || isnothing(db_path)
+        db_path = occursin("src", @__DIR__) ? split(@__DIR__, "src")[1] : *(@__DIR__, "\\..\\")
+        db_path *= "resources\\Analysis data\\substance.db"
+    end
+    db = sql.DB(db_path)
+    sql_fields = join(fields, ", ")
+    query_texture = sql.Stmt(db, "SELECT "*sql_fields*" FROM air_stability WHERE class LIKE ? AND outdoor LIKE ?")
+    results = dbi.execute(query_texture, [stability_class, outdoor_class])
+    resdf = DataFrame(results)
+    return resdf
 end
 
-function cn_extract( cnl, soil, dbloc::AbstractString=*( @__DIR__, "\\") )
+
+"""
+    cn_extract( cnl::String, id_soil::Int64, dbloc::String="..\\..\\..\\resources\\Analysis data\\substance.db" )
+
+Extract the value of class `cnl` of a substance from the database at `db_path` where the id matches `soil`.
+"""
+function cn_extract( cnl::String, id_soil::Int64, dbloc::String="" )
+    if  isempty(db_path) || isnothing(db_path)
+        db_path = occursin("src", @__DIR__) ? split(@__DIR__, "src")[1] : *(@__DIR__, "\\..\\")
+        db_path *= "resources\\Analysis data\\substance.db"
+    end
     db = sql.DB(dbloc*"substance.db")
-    classecn = "cn_"*String(cnl)
-    query_cn = sql.Stmt( db, "SELECT ? FROM cn WHERE id = ?AAA" )
-    sql.bind!( query_cn, [ classecn, soil ] )
-    results = dbi.execute(query_cn)
-    res_fields = [ x for x in results ]
-	return res_fields
+    classecn = "cn_$cnl"
+    query_cn = sql.Stmt( db, "SELECT "*classecn*" FROM cn WHERE id = ?" )
+    results = dbi.execute(query_cn, [id_soil])
+    resdf = DataFrame(results)
+    return resdf
 end
 
-function cn_list_extract( dbloc::AbstractString=*( @__DIR__, "\\") )
-	db = sql.DB(dbloc*"substance.db")
+
+"""
+    cn_list_extract( db_path::String="..\\..\\..\\resources\\Analysis data\\substance.db" )
+
+Extract all values from table `cn` of the database at `db_path`.
+"""
+function cn_list_extract( db_path::String="" )
+    if  isempty(db_path) || isnothing(db_path)
+        db_path = occursin("src", @__DIR__) ? split(@__DIR__, "src")[1] : *(@__DIR__, "\\..\\")
+        db_path *= "resources\\Analysis data\\substance.db"
+    end
+	db = sql.DB(db_path)
     query_cn = sql.Stmt( db, "SELECT * FROM cn" )
     results = dbi.execute(query_cn)
- #    listaclc = Dict()
- #    for row in results
- #        lista_soil = [ x for x in row ]
- #        listaclc[ row[5] ] = lista_soil
- #    end
-    listaclc = Dict( row[5] => [ x for x  in row ] for row in results )
-    return listaclc
+    resdf = DataFrame(results)
+    return resdf
 end
-=#
 
 
 

@@ -559,7 +559,7 @@ function run_runoff( dem_file::AbstractString, ccs_file::AbstractString, source_
     path_temp_landcover = folder * "\\temp_lc.tiff"
     path_temp_soil = folder * "\\temp_soil.tiff"
 
-    clc_list = Functions.cn_list_extract()
+    clc_df = Functions.cn_list_extract()
 
     soil_control = 0
 
@@ -675,7 +675,7 @@ function run_runoff( dem_file::AbstractString, ccs_file::AbstractString, source_
          # PER LA CLASSE DEL SUOLO SI PUO' FAR RIFERIMENTO AL DIZIONARIO DEL FILE
          # CREDO STIA PRENDENDO LA RESISTENZA DEL SUOLO NEL PUNTO CORRENTE
             # Se passiamo come parameto un raster delle resisteze questa riga va sostituita
-            cn = listaclc[lc][ classisoil[soil] ] # Classisoi ottenuto da "substance.db"
+            cn = clc_df[lc, soil] # Classisoi ottenuto da "substance.db"
             S = 254.0((100 / cn) - 1)
         catch
             S = 0
