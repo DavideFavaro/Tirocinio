@@ -23,7 +23,7 @@ const agd = ArchGDAL
 
 
 
-@with_kw mutable struct Sediment
+@with_kw mutable struct Sediment <: Functions.AbstractAnalysisObject
     # x0,y0: coordinate sorgente
     # x,y: coordinate target point
   
@@ -66,10 +66,8 @@ function calc_e!( s::Sediment, i )
     return e1*e2
 end
 
-function calcSediment!( s::Sediment )
-    if s.x <= 0
-        return 0.0
-    else
+function calc_concentration!( s::Sediment )
+    if s.x > 0
         q = calc_q(s)
         n = round( Int64, s.time / s.time_intreval )
         csum = 0
@@ -79,32 +77,37 @@ function calcSediment!( s::Sediment )
         end
         return q * csum * s.time_intreval
     end
+    return 0.0
 end
 
 
 
 """
-    compute_result!( dtm::AbstractArray, r0::Int64, c0::Int64, ri::Int64, ci::Int64, sediment::Sediment )
+    compute_result!( dem::ArchGDAL.AbstractDataset, r0::Int64, c0::Int64, ri::Int64, ci::Int64, sediment::Sediment )
 
-Given the raster `dtm` and the indexes (`r0`, `c0`) of the source, modify the postion values of object `sediment` and return the concentration at indexes (`ri`, `ci`)
+Given the raster `dem` and the indexes (`r0`, `c0`) of the source, modify the postion values of object `sediment` and return the concentration at indexes (`ri`, `ci`)
 """
-function compute_result!( dtm::AbstractArray, r0::Int64, c0::Int64, ri::Int64, ci::Int64, sediment::Sediment )
-    sediment.x, sediment.y = Functions.compute_position(dtm, r0, c0, ri, ci, sediment.flow_direction)
-    return calcSediment!(sediment)
+function Functions.compute_result!( dem::ArchGDAL.AbstractDataset, r0::Int64, c0::Int64, ri::Int64, ci::Int64, sediment::Sediment )
+    sediment.x, sediment.y = Functions.compute_position(dem, r0, c0, ri, ci, sediment.flow_direction)
+    return calc_concentration!(sediment)
 end
 
 
 
+Functions.condition(value::Float64) = value > 0.01
+
+
+
 """
-    run_sediment( dtm_file::AbstractString, source_file::AbstractString, resolution::Int64, mean_flow_speed::Float64, mean_depth::Float64, x_dispersion_coeff::Float64, y_dispersion_coeff::Float64,
+    run_sediment( dem_file::AbstractString, source_file::AbstractString, resolution::Int64, mean_flow_speed::Float64, mean_depth::Float64, x_dispersion_coeff::Float64, y_dispersion_coeff::Float64,
                   dredged_mass::Float64, flow_direction::Float64, mean_sedimentation_velocity::Float64, time::Int64, time_intreval::Int64,
                   current_oscillatory_amplitude::Int64=0, tide::Int64=0, output_path::AbstractString=".\\output_model_sediments.tiff" )
 
 Create and save as `output_path` a raster containing the results of model of plumes of turbidity induced by dredging.
 
 # Arguments
-- `dtm_file::AbstractString`: path to the raster of terrain.
-- `source_file::AbstractString`: path to the shapefile containing the dredging source point.
+- `dem_file::String`: path to the raster of terrain.
+- `source_file::String`: path to the shapefile containing the dredging source point.
 - `resolution::Int64`: size of a cell in meters.
 - `mean_flow_speed::Float64`: speed of the flowing water.
 - `mean_depth::Float64`: depth in meters.
@@ -117,11 +120,11 @@ Create and save as `output_path` a raster containing the results of model of plu
 - `time_intreval::Int64`: length of an epoch.
 - `current_oscillatory_amplitude::Int64=0`: water oscillatory amplitude.
 - `tide::Int64=0`: tidal cycle in hours.
-- `output_path::AbstractString=".\\output_model_sediments.tiff"`: path of the resulting raster.
+- `output_path::String=".\\output_model_sediments.tiff"`: path of the resulting raster.
 """
-function run_sediment( dtm_file::AbstractString, source_file::AbstractString, resolution::Float64, mean_flow_speed::Float64, mean_depth::Float64, x_dispersion_coeff::Float64,
+function run_sediment( dem_file::String, source_file::String, resolution::Float64, mean_flow_speed::Float64, mean_depth::Float64, x_dispersion_coeff::Float64,
                        y_dispersion_coeff::Float64, dredged_mass::Float64, flow_direction::Float64, mean_sedimentation_velocity::Float64, time::Int64, time_intreval::Int64,
-                       current_oscillatory_amplitude::Float64=0.0, tide::Int64=0, output_path::AbstractString=".\\output_model_sediments.tiff" )
+                       current_oscillatory_amplitude::Float64=0.0, tide::Int64=0, output_path::String=".\\output_model_sediments.tiff" )
 #=
     mean_flow_speed = v
     mean_depth = h
@@ -144,65 +147,41 @@ function run_sediment( dtm_file::AbstractString, source_file::AbstractString, re
         throw(DomainError(source, "`source` must be a point."))
     end
 
-    dtm = agd.read(dtm_file)
-    refsys = agd.getproj(dtm)
+    dem = agd.read(dem_file)
+    refsys = agd.getproj(dem)
 
-    if agd.importWKT(refsys) != agd.getspatialref(geom)
+    if refsys != agd.toWKT(agd.getspatialref(geom))
         throw(DomainError("The reference systems are not uniform. Aborting analysis."))
     end
     
     x_source = agd.getx(geom, 0)
     y_source = agd.gety(geom, 0)
-    r_source, c_source = Functions.toIndexes(dtm, x_source, y_source)
+    r_source, c_source = Functions.toIndexes(dem, x_source, y_source)
     
     #   start_time = time.time()
 
-    points = [(r_source, c_source)]
- # NON SO SE SIA IL VALORE CORRETTO DA INSERIRE
-    values = [dredged_mass]
+    points = [ (r_source, c_source) ]
+    values = [ dredged_mass ]
     sediment = Sediment(dredged_mass, time, mean_depth, x_dispersion_coeff, y_dispersion_coeff, 0.0, 0.0, mean_flow_speed,
                         flow_direction, mean_sedimentation_velocity, time_intreval, current_oscillatory_amplitude, tide)
-    expand!(points, values, dem, r_source, c_source, sediment)
+    Functions.expand!(points, values, dem, sediment)
 
     minR = minimum( point -> point[1], points )
     minC = minimum( point -> point[2], points )
     maxR = maximum( point -> point[1], points )
     maxC = maximum( point -> point[2], points )
 
- #= SENZA FUNZIONI
-    rows = maxR - minR
-    cols = maxC - minC
-    geotransform = agd.getgeotransform(dtm)
-
-    gtiff_driver = agd.getdriver("GTiff")
-    target_ds = agd.create( output_path, gtiff_driver, rows, cols, 1, agd.GDAL.GDT_Float32 )
-    agd.setgeotransform!(target_ds, [ minX, resolution, 0.0, maxY, 0.0, -resolution ])
-    agd.setproj!(target_ds, refsys)
-    valNoData = -9999.0
-    band1 = agd.getband(target_ds, 1)
-    agd.setnodatavalue!( band1, Float64(valNoData) )
-    agd.fillraster!(band, valNoData)
-    band = agd.read(band1)
-
-    for (point, value) in zip(points[i], values[i])
-        r, c = point - (minR, minC)
-        band[r, c] = value
-    end
- =#
-
-    geotransform = agd.getgeotransform(dtm)
-    geotransform[[1, 4]] .+= (minR - 1, maxC - 1) .* geotransform[[2, 6]]
-
-    #   data = [ isnothing( findfirst(p -> p == (r, c), points) ) ? noData : values[findfirst(p -> p == (r, c), points)] for r in minR:maxR, c in minC:maxC ]
-    data = fill(noDataValue, maxR-minR, maxC-minC)
+    geotransform = agd.getgeotransform(dem)
+    geotransform[[1, 4]] = Functions.toCoords(dem, minR, minC)
+    noData = agd.getnodatavalue(agd.getband(dem, 1))
+    data = fill(noData, maxR-minR, maxC-minC)
     for r in minR:maxR, c in minC:maxC
-        match = findfirst(p -> p == (r, c), points)
+        match = findfirst( p -> p == (r, c), points )
         if !isnothing(match)
             data[r-minR+1, c-minC+1] = values[match]
         end
     end
-
-    Functions.writeRaster(data, agd.getdriver("GTiff"), geotransform, resolution, refsys, agd.getnodatavalue(dtm), output_path)
+    Functions.writeRaster(data, agd.getdriver("GTiff"), geotransform, resolution, refsys, noData, output_path)
 end
 
 

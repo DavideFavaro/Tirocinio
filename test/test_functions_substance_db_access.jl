@@ -4,7 +4,7 @@ Module to test the methods of module `Functions` ment to acess the project subst
 """
 
 
-include("..\\src\\Analysis\\Utils\\Functions.jl")
+include("..\\src\\Analysis\\Utils\\FunctionsDB.jl")
 
 
 

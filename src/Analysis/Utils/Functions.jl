@@ -1,5 +1,7 @@
-"""Module containing auxiliary functions."""
 module Functions
+"""
+Module containing auxiliary functions.
+"""
 
 
 
@@ -7,129 +9,38 @@ using ArchGDAL
 using CombinedParsers
 using CombinedParsers.Regexp
 using DataFrames
-using DBInterface
 using Rasters
-using SQLite
 
 
 
-export substance_extract, texture_extract, air_extract, cn_extract, cn_list_extract,
-       getindex, setindex!, convert, -,
-       getOrigin, getCellDims, getSidesDistances, toCoords, toIndexes,
-       compute_position, expand!
+export AbstractAnalysisObject, # Supertype of structs used for the analysis 
+       getindex, setindex!, convert, -, # Functions overloadings
+       getOrigin, getCellDims, getSidesDistances, toCoords, toIndexes, # Utility functions for retrieving informations on rasters
+       compute_result!, condition, # Empty function definitions created to allow various analysis specific methods
+       compute_position, expand! # Auxiliary functions for the execution of analysis
 
 
 
 const agd = ArchGDAL
-const dbi = DBInterface
-const sql = SQLite
 
 
 
-@syntax dims = Sequence( "Pixel Size = (", Numeric(Float64), ",", Numeric(Float64), ")" )
-@syntax points = Sequence( re"[^(]+", "(", re" *", Numeric(Float64), ",", re" *", Numeric(Float64), re".+" )
+"""
+    AbstractAnalysisObject
+
+Abstract supertype of the structs defined to reppresented a kind of analysis to be performed
+"""
+abstract type AbstractAnalysisObject end
+
+
+@syntax cell_dims = Sequence( "Pixel Size = (", Numeric(Float64), ",", Numeric(Float64), ")" )
+@syntax raster_points = Sequence( re"[^(]+", "(", re" *", Numeric(Float64), ",", re" *", Numeric(Float64), re".+" )
 
 
 
 Base.getindex( collection::Raster{T}, x::Float64, y::Float64 ) where {T} = collection[X(Near(x)), Y(Near(y))][1]
 Base.setindex!( collection::Raster{T}, v, x::Float64, y::Float64, ) where {T} = collection[X(Near(x)), Y(Near(y))] .= v
 Base.convert(::Type{Int64}, n::AbstractFloat) = round(Int64, n)
-
-
-"""
-    substance_extract( substance_id::Int64, fields::Vector{String}, db_path::String = "..\\..\\..\\resources\\Analysis data\\substance.db" )
-
-Extract values that describe a pollutant from the columns indicated by `fields` of the database at `db_path` where the id matches `substance_id`.
-"""
-function substance_extract( substance_id::Int64, fields::Vector{String}, db_path::String="" )
-    if  isempty(db_path)
-        db_path = occursin("src", @__DIR__) ? split(@__DIR__, "src")[1] : *(@__DIR__, "\\..\\")
-        db_path *= "resources\\Analysis data\\substance.db"
-    end
-    # estrazione valori sostanze
-    db = sql.DB(db_path)
-    sql_fields = join(fields, ", ")
-    query_substance = sql.Stmt( db, "SELECT "*sql_fields*" FROM substance WHERE id = ?" )
-    results = dbi.execute(query_substance, [substance_id])
-    resdf = DataFrame(results)
-    return resdf
-end
-
-
-"""
-    texture_extract( texture_name::String, fields::Vector{String}, db_path::String = "..\\..\\..\\resources\\Analysis data\\substance.db" )
-
-Extract values that describe a tipe of texture from the columns indicated by `fields` of the database at `db_path` where the column `name` matches the value of `textre_name`.
-"""
-function texture_extract( texture_name::String, fields::Vector{String}, db_path::String="" )
-    if  isempty(db_path)
-        db_path = occursin("src", @__DIR__) ? split(@__DIR__, "src")[1] : *(@__DIR__, "\\..\\")
-        db_path *= "resources\\Analysis data\\substance.db"
-    end
-    # estrazione valori sostanze
-    db = sql.DB(db_path)
-    sql_fields = join(fields, ", ")
-    query_texture = sql.Stmt(db, "SELECT "*sql_fields*" FROM texture WHERE nome LIKE ?" )
-    results = dbi.execute(query_texture, [texture_name]) 
-    resdf = DataFrame(results)
-    return resdf
-end
-
-
-"""
-    air_extract( stability_class::String, outdoor_class::String, fields::Vector{String}, db_path::String="..\\..\\..\\resources\\Analysis data\\substance.db" )
-
-Extract values from the columns indicated by `fields` of the database at `db_path` where the outdoor and stability class match `outdoor_class` and `stability_class`.
-"""
-function air_extract( stability_class::String, outdoor_class::String, fields::Vector{String}, db_path::String="" )
-    if  isempty(db_path) || isnothing(db_path)
-        db_path = occursin("src", @__DIR__) ? split(@__DIR__, "src")[1] : *(@__DIR__, "\\..\\")
-        db_path *= "resources\\Analysis data\\substance.db"
-    end
-    db = sql.DB(db_path)
-    sql_fields = join(fields, ", ")
-    query_texture = sql.Stmt(db, "SELECT "*sql_fields*" FROM air_stability WHERE class LIKE ? AND outdoor LIKE ?")
-    results = dbi.execute(query_texture, [stability_class, outdoor_class])
-    resdf = DataFrame(results)
-    return resdf
-end
-
-
-"""
-    cn_extract( cnl::String, id_soil::Int64, dbloc::String="..\\..\\..\\resources\\Analysis data\\substance.db" )
-
-Extract the value of class `cnl` of a substance from the database at `db_path` where the id matches `soil`.
-"""
-function cn_extract( cnl::String, id_soil::Int64, dbloc::String="" )
-    if  isempty(db_path) || isnothing(db_path)
-        db_path = occursin("src", @__DIR__) ? split(@__DIR__, "src")[1] : *(@__DIR__, "\\..\\")
-        db_path *= "resources\\Analysis data\\substance.db"
-    end
-    db = sql.DB(dbloc*"substance.db")
-    classecn = "cn_$cnl"
-    query_cn = sql.Stmt( db, "SELECT "*classecn*" FROM cn WHERE id = ?" )
-    results = dbi.execute(query_cn, [id_soil])
-    resdf = DataFrame(results)
-    return resdf
-end
-
-
-"""
-    cn_list_extract( db_path::String="..\\..\\..\\resources\\Analysis data\\substance.db" )
-
-Extract all values from table `cn` of the database at `db_path`.
-"""
-function cn_list_extract( db_path::String="" )
-    if  isempty(db_path) || isnothing(db_path)
-        db_path = occursin("src", @__DIR__) ? split(@__DIR__, "src")[1] : *(@__DIR__, "\\..\\")
-        db_path *= "resources\\Analysis data\\substance.db"
-    end
-	db = sql.DB(db_path)
-    query_cn = sql.Stmt( db, "SELECT * FROM cn" )
-    results = dbi.execute(query_cn)
-    resdf = DataFrame(results)
-    return resdf
-end
 
 
 
@@ -141,23 +52,16 @@ using `driver` to define the format.
 """
 function writeRaster( data::Array{Float32}, driver::ArchGDAL.Driver, geotransform::Vector{Float64}, resolution::Real, refsys::AbstractString, noDataValue::Real, output_file_path::AbstractString=".\\raster.tiff" )
     rows, cols, bands = length(size(data)) < 3 ? (size(data)..., 1) : size(data) 
-    res_raster = agd.create(output_file_path, driver=driver, width=rows, height=cols, nbands=bands, dtype=Float32)
-    for i in 1:bands
-        agd.setnodatavalue!(agd.getband(res_raster, i), noDataValue)
-        agd.write!(res_raster, data[:, :, i], i)
+    agd.create(output_file_path, driver=driver, width=rows, height=cols, nbands=bands, dtype=Float32) do res_raster
+        for i in 1:bands
+            agd.setnodatavalue!(agd.getband(res_raster, i), noDataValue)
+            agd.write!(res_raster, data[:, :, i], i)
+        end
+        agd.setgeotransform!(res_raster, geotransform)
+        agd.setproj!(res_raster, refsys)
     end
-    agd.setgeotransform!(res_raster, geotransform)
-    agd.setproj!(res_raster, refsys)
-    return res_raster
 end
 
-
-
-#=
-function applystyle( layer, colore, opacity )
-    return nothing
-end
-=#
 
 
 # Additional functions
@@ -170,7 +74,7 @@ Return the cells' dimentions in meters for an ArchGDAL raster dataset
 function getCellDims( dtm::ArchGDAL.AbstractDataset )
     info = split( agd.gdalinfo( dtm ), "\n" , keepempty=false )
     pos = findfirst(occursin.("Pixel Size", info))
-    size_pars = dims(info[pos])
+    size_pars = cell_dims(info[pos])
     return size_pars[2], size_pars[4]
 end
 
@@ -184,7 +88,7 @@ Return the coordinates of the origin point of the raster
 function getOrigin( dtm::ArchGDAL.AbstractDataset )
     info = split( agd.gdalinfo( dtm ), "\n" , keepempty=false )
     pos = findfirst(occursin.("Origin", info))
-    origin_pars = points(info[pos])
+    origin_pars = raster_points(info[pos])
     return origin_pars[4], origin_pars[7]
 end
 
@@ -198,20 +102,21 @@ Return distances from left, upper, right and lower sides of an ArchGDAL raster d
 function getSidesDistances( dtm::ArchGDAL.AbstractDataset )
     info = split( agd.gdalinfo( dtm ), "\n" , keepempty=false )
     pos = findfirst(occursin.("Upper Left", info))
-    dists_pars = points.( getindex.(Ref(info), [pos, pos+3] ) )
+    dists_pars = raster_points.( getindex.(Ref(info), [pos, pos+3] ) )
     return dists_pars[1][4], dists_pars[1][7], dists_pars[2][4], dists_pars[2][7]
 end
 
 
 
 """
-    toCoords( dtm::ArchGDAL.AbstractDataset, r::Integer, c::Integer )
+    toCoords( dtm::ArchGDAL.AbstractDataset, r::Int64, c::Int64 )
 
 Convert convert the indexes `r` and `c` to the coordinates of the respective cell in `dtm` raster
 """
 function toCoords( dtm::ArchGDAL.AbstractDataset, r::Int64, c::Int64 )
     gtf = agd.getgeotransform(dtm)
-    return gtf[[1,4]] .+ ( (r + 1/2) .* gtf[[2,5]] ) .+ ( (c + 1/2) .* gtf[[3,6]] )
+ #  return gtf[[1,4]] .+ ( (r + 1/2) .* gtf[[2,5]] ) .+ ( (c + 1/2) .* gtf[[3,6]] )
+    return gtf[[1,4]] .+ ( r .* gtf[[2,5]] ) .+ ( c .* gtf[[3,6]] )
 end
 
 function toCoords( geotransform::Vector{Float64}, r::Int64, c::Int64 )
@@ -224,174 +129,101 @@ end
 
 
 """
-    toIndexes( dtm::ArchGDAL.AbstractDataset, x::Real, y::Real )
+    toIndexes( dtm::ArchGDAL.AbstractDataset, x::Float64, y::Float64 )
 
 Convert coordinates to the indexes of the respective cell in `dtm` raster
 """
-function toIndexes( dtm::ArchGDAL.AbstractDataset, x::Real, y::Real )
+function toIndexes( dtm::ArchGDAL.AbstractDataset, x::Float64, y::Float64 )
     gtf = agd.getgeotransform(dtm)
     return round.( Int64, ( ( (x, y) .- gtf[[1,4]] ) ./ gtf[[2,6]] ) )
 end
 
-function toIndexes( geotransform::Vector{Float64}, x::Real, y::Real )
+function toIndexes( geotransform::Vector{Float64}, x::Float64, y::Float64 )
     return round.( Int64, ( ( (x, y) .- geotransform[[1,4]] ) ./ geotransform[[2,6]] ) )
 end
 
 
 
 """
-    compute_position( r0::Integer, c0::Integer, ri::Integer, ci::Integer, direction::Real )
+    compute_position( dtm::ArchGDAL.AbstractDataset, r0::Int64, c0::Int64, ri::Int64, ci::Int64, direction::Int64 )
 
 Given the indexes of the source cell (`r0`, `c0`), those of the current one (`ri`, `ci`) and the angular direction of flow, compute the (`x`, `y`) coordinates
 """
-function compute_position( dtm::AbstractArray, r0::Integer, c0::Integer, ri::Integer, ci::Integer, direction::Real )
+function compute_position( dtm::ArchGDAL.AbstractDataset, r0::Int64, c0::Int64, ri::Int64, ci::Int64, direction::Int64 )
     Δx, Δy = toCoords(dtm, r0, c0) - toCoords(dtm, ri, ci)
     dir = deg2rad(direction)
-    sindir, cosdir = sin(dir), cos(dir)
-    return Δx * cosdir - Δy * sindir, Δx * sindir + Δy * cosdir
+    sindir = sin(dir)
+    cosdir = cos(dir)
+    return (Δx * cosdir) - (Δy * sindir), (Δx * sindir) + (Δy * cosdir)
+end
+
+
+
+function compute_result!( dtm::ArchGDAL.AbstractDataset, r0::Int64, c0::Int64, ri::Int64, ci::Int64, object::AbstractAnalysisObject )
+    throw(DomainError(object, "No function definition for `$(typeof(object))`"))
+end
+
+
+
+function condition(value)
+    throw(DomainError("Using unspecialized function"))
 end
 
 
 
 """
-    expand!( condition::Function, positions::AbstractVector, results::AbstractVector, dtm::AbstractArray, indx_x::Integer, indx_y::Integer, object )::Nothing
+    expand!( points::AbstractVector{Tuple{Int64, Int64}}, results::AbstractVector{Float64}, dem::ArchGDAL.AbstractDataset, object::AbstractAnalysisObject )
 
-Recursively compute the concentration of a substance spreading at cell (`indx_x`, `indx_y`) of `dtm` and in the adjacent cells,
-adding all cells touched by the substance in `positions` and the relative concentration in `results` and accounting for the specificity of the
-substance and the physical context through `object`.
+Populate the vectors `points` and `results`, originally containing the source point of the diffusion of a pollutant and its initial concentration respectively.
 
-The function, for each cell starting from the one at (`indx_x`, `indx_y`), checks whether it has been already visited, if so skips it, otherwise computes the concentration
-of substance in it, keeping track of the total distance from the source through the first element of `positions`, which is always the source point.
-If the concentration is sufficient according to `condition`, the function continues on the four cardinal adjacent cells.
-
-The parameter `object` accounts for the properties of the substance and the enviroment surrounding it at each instant ad is modified every time the concentration is computed
-allowing to keep track of the changes.
-
-The function calls to method `compute_result!` of which exists a version specific for each module that employs `expand!`.
+Starting from the source, reppresented by the first element contained in `points` as a `Tuple{Int64, Int64}`, where the integer values correspond to the indexes
+of the cell corresponding to the source in the raster `dem`, compute the concentration of pollutant in adjacent cells checking if the obtained value is notable,
+if so proceed to again check the adjacent cells untill no more notable values of concentrations can be found.\n
+The value of concentration of a cell is calculated through the employment of a `mutable struct` specifically made to account for the desired analysis, this object
+must be defined in the module where the `expand!` function is to be used, the struct must also subtype `Functions.AbstractAnalysisObject`.\n
+The concentration itself is calculated using a `compute_result!` function found in the module that calls `expand!`, this function must be specifically made for
+the desired analysis, implementing `Functions.compute_result!`.\n
+Lastly, The module must also implement a version of the `condition` function to check that the concentration on a cell matches standard acceptable values for the
+specific analsis.
 """
-function expand!( condition::Function, positions::AbstractVector, results::AbstractVector, dtm::AbstractArray, indx_x::Integer, indx_y::Integer, object )
-    if indx_x < 1 || indx_x > size(dtm, 1) || indx_y < 1 || indx_y > size(dtm, 1)
-        return nothing
-    end
-    if (indx_x, indx_y) in positions
-        xs = [ indx_x, indx_x-1, indx_x ]
-        ys = [ indx_y+1, indx_y, indx_y-1 ]
-        expand!( condition, positions, results, dtm, indx_x+1, indx_y, object )
-        expand!.( condition, Ref(positions), Ref(results), Ref(dtm), xs, ys, deepcopy(object) )
-        return nothing
-    else
-        result = compute_result!(dtm, positions[1]..., indx_x, indx_y, object)
+function expand!( points::AbstractVector{Tuple{Int64, Int64}}, results::AbstractVector{Float64}, dem::ArchGDAL.AbstractDataset, object::AbstractAnalysisObject )
+ # Maximum indexes for rows and columns.
+    max_r, max_c = size(agd.getband(dem, 1))
+    any(@. points[1] < 1 || points[1] > (max_r, max_c) ) && throw(DomainError(points, "The first element of vector `points` must correspond to a cell inside raster `dem`"))
+ # Vector of displacements
+    v = [1, 0, -1]
+ # Indexes of the cells that need to be checked, initially filled with the adjacents of the source.
+    new_points = [ ( points[1][1]+i, points[1][2]+j ) for i in v, j in v if (i == 0) ⊻ (j == 0) ]
+ # Indexes of the cells that have already been checked.
+    visited = deepcopy(points)
+ # While there are still points to verify.
+    while !isempty(new_points)
+     # Extract a point.
+        p = popfirst!(new_points)
+     # If it's out of bounds continue to the next cell.
+        any(@. p < 1 || p > (max_r, max_c) ) && continue
+     # Add the point to the list of already visited points.
+        push!(visited, p)
+     # Obtain the concentration on the current cell.
+        result = compute_result!(dem, points[1]..., p..., object)
+     # If the result is valid
         if condition(result)
-            push!( positions, (ind_x, ind_y) )
-            push!( results, result )
-            xs = [ indx_x, indx_x-1, indx_x ]
-            ys = [ indx_y+1, indx_y, indx_y-1 ]
-            expand!( condition, positions, results, dtm, indx_x+1, indx_y, object )
-            expand!.( condition, Ref(positions), Ref(results), Ref(dtm), xs, ys, deppcopy(object) )
+         # Add the point to the valid points and its result to the valid results.
+            push!(points, p)
+            push!(results, result)
+         # For each adjacent cell to the current one, if it has not already been encountered, add it to the points to check.
+            for i in v, j in v
+                if (i == 0) ⊻ (j == 0)
+                    np = p .+ (i, j)
+                    np ∉ visited && np ∉ new_points && push!(new_points, np)
+                end
+            end
         end
-        return nothing
     end
 end
+
+
 
 
 
 end # module
-
-#= TESTING 
-
-
-import ArchGDAL as agd
-using Rasters
-
-# Testing conversione coordinate -> indici e indici -> coordinate
-
-
-dtm_file = split( @__DIR__ , "\\Porting\\")[1] * "\\Mappe\\DTM_wgs84.tiff"
-dtm = agd.read(dtm_file)
-rdtm = Raster(dtm_file)
-
-
-sat = agd.read("D:\\Documents and Settings\\DAVIDE-FAVARO\\My Documents\\GitHub\\Tirocinio\\Mappe\\sat WGS84\\sette_sorelle.shp")
-feature = collect(agd.getlayer(sat, 0))[1]
-poly = agd.getgeom(feature, 0)
-line = agd.getgeom(poly, 0)
-point = agd.getpoint(line, 0)
-x, y = point[1:2]
-
-gtf = agd.getgeotransform(dtm)
-igtf = deepcopy(gtf)
-agd.invgeotransform!(gtf, igtf)
-
-r1, c1 = agd.applygeotransform(igtf, x, y)
-x1, y1 = agd.applygeotransform(gtf, r1, c1)
-
-
-
-r2 = round( Int64, ((x - gtf[1]) / gtf[2]) )
-c2 = round( Int64, ((y - gtf[4]) / gtf[6]) )
-x2 = gtf[1] + ((r2 - 1) * gtf[2])
-y2 = gtf[4] + ((c2 - 1) * gtf[6])
-
-
-x3 = gtf[1] + ( (r2 + 1/2) * gtf[2] ) + ( (c2 + 1/2) * gtf[3] )
-y3 = gtf[4] + ( (r2 + 1/2) * gtf[5] ) + ( (c2 + 1/2) * gtf[6] )
-
-
-x, y = (10.5998, 44.7666)
-
-
-
-
-
-# Test creazione raster
-
-
-dtm_file = split( @__DIR__ , "\\Porting\\")[1] * "\\Mappe\\DTM_wgs84.tiff"
-dtm = agd.read(dtm_file)
-
-points = Vector{Tuple{Int64, Int64}}()
-values = Vector{Float32}()
-for r in 1000:1010, c in 1000:1010
-    if r == 1010 && c == 1002
-        break
-    end
-    push!( points, (r, c) )
-    push!( values, 156.f0 + (r-1000)*(c-1000) )
-end
-
-maxR = maximum( point -> point[1], points )
-minR = minimum( point -> point[1], points )
-maxC = maximum( point -> point[2], points )
-minC = minimum( point -> point[2], points )
-rows = maxR - minR + 1
-cols = maxC - minC + 1
-
-gtf = agd.getgeotransform(dtm)
-gtf[1] += (minR - 1) * gtf[2]
-gtf[4] += (maxC - 1) * gtf[6]
-
-rfs = agd.getproj(dtm)
-
-noData = -9999.f0
-
-data = [ isnothing( findfirst(p -> p == (r, c), points) ) ? noData : values[findfirst(p -> p == (r, c), points)] for r in minR:maxR, c in minC:maxC ]
-
-writeRaster( data, agd.getdriver("GTiff"), gtf, rfs, noData, "C:\\Users\\DAVIDE-FAVARO\\Desktop\\test.tiff", false )
-
-
-
-
-
-
-
-
-target_ds = agd.create( "C:\\Users\\DAVIDE-FAVARO\\Desktop\\test.tiff", driver=agd.getdriver("GTiff"), width=rows, height=cols, nbands=1, dtype=Float32)
-
-agd.setnodatavalue!(agd.getband(target_ds, 1), noData)
-
-agd.write!(target_ds, data, 1)
-
-agd.setgeotransform!(target_ds, gtf)
-agd.setproj!(target_ds, rfs)
-
-=#

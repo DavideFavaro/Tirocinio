@@ -12,6 +12,7 @@ using Dates
 
 
 include(".\\Utils\\Functions.jl")
+include(".\\Utils\\FunctionsDB.jl")
 
 
 
@@ -23,7 +24,7 @@ const agd = ArchGDAL
 
 
 
-mutable struct Plume
+mutable struct Plume <: Functions.AbstractAnalysisObject
     concentration::Float64      # Pollutant concentration (m³/sec)
     d::Float64                  # distance, x coordinate (m)
     y::Float64                  # y coordinate (m)
@@ -35,24 +36,24 @@ mutable struct Plume
     wind_direction::Int64       # angle of direction of the wind (°)
     wind_speed::Float64         # speed of the wind
     gas_speed::Float64          # speed of the fumes
-    smoke_temperature::Float64  # fumes temperature
+    gas_temperature::Float64    # fumes temperature
     temperature::Float64        # environment temperature
     max_domain::Float64
-
-    H
-    σy
-    σz
-    g1
-    g2
     
-    Plume(concentration,d,y,z,stability,outdoor,stack_height,stack_diameter,wind_direction,wind_speed,gas_speed,smoke_temperature,temperature,max_domain)=new(concentration,d,y,z,stability,outdoor,stack_height,stack_diameter,wind_direction,wind_speed,gas_speed,smoke_temperature,temperature,max_domain)
+    H::Float64
+    σy::Float64
+    σz::Float64
+    g1::Float64
+    g2::Float64
+    
+    Plume(concentration,d,y,z,stability,outdoor,stack_height,stack_diameter,wind_direction,wind_speed,gas_speed,gas_temperature,temperature,max_domain)=new(concentration,d,y,z,stability,outdoor,stack_height,stack_diameter,wind_direction,wind_speed,gas_speed,gas_temperature,temperature,max_domain)
 end
 
 
 
 function calc_h!( p::Plume )
     try
-        fb = 9.81 * ( (p.stack_diameter * p.gas_speed) / 4 ) * ( ( p.smoke_temperature / p.temperature ) / p.smoke_temperature )
+        fb = 9.81 * ( (p.stack_diameter * p.gas_speed) / 4 ) * ( ( p.gas_temperature / p.temperature ) / p.gas_temperature )
         Δh = 1.6 * fb^0.333333 * p.d^0.666667
         p.H = p.stack_height + Δh
     catch
@@ -62,7 +63,7 @@ function calc_h!( p::Plume )
 end
 
 function calc_σ!( p::Plume )
-    σy1, σy2, σyexp, σz1, σz2, σzexp = Functions.air_extract(p.stability, p.outdoor, ["sigmay1", "sigmay2", "sigmayexp", "sigmaz1", "sigmaz2", "sigmazexp"])[1, :]
+    σy1, σy2, σyexp, σz1, σz2, σzexp = FunctionsDB.air_extract(p.stability, p.outdoor, ["sigmay1", "sigmay2", "sigmayexp", "sigmaz1", "sigmaz2", "sigmazexp"])[1, :]
     p.σy = ( σy1 * p.d ) / ( 1 + σy2 * p.d )^σyexp
     p.σz = ( σz1 * p.d ) / ( 1 + σz2 * p.d )^σzexp
     return p.σy, p.σz
@@ -75,51 +76,53 @@ function calc_g!( p::Plume )
 end
 
 function calc_C!( p::Plume )
-    p.C = ( 100p.concentration / 3600p.wind_speed ) * ( (p.g1 * p.g2) / ( 2π * p.σy * p.σz ) )
-    return p.C
+    return ( 100p.concentration / 3600p.wind_speed ) * ( (p.g1 * p.g2) / ( 2π * p.σy * p.σz ) )
 end
 
-function calcPlume!( p::Plume )
-    if p.d <= 0
-        return 0.0
-    else
-        calc_σ!(element)
-        calc_g!(element)
-        calc_h!(element)
-        cfinal = calc_C!(element)
-        if cfinal > max_dominio
+function calc_concentration!( p::Plume )
+    if p.d > 0
+        calc_σ!(p)
+        calc_g!(p)
+        calc_h!(p)
+        cfinal = calc_C!(p)
+        if cfinal > p.max_domain
             p.max_domain = cfinal
         end
         return cfinal
     end
+    return 0.0
 end
 
 
 
 """
-    compute_result!( dtm::AbstractArray, r0::Int64, c0::Int64, ri::Int64, ci::Int64, plume::Plume )
+    compute_result!( dem::ArchGDAL.AbstractDataset, r0::Int64, c0::Int64, ri::Int64, ci::Int64, plume::Plume )
 
-Given the raster `dtm` and the indexes (`r0`, `c0`) of the source, modify the postion values of object `sediment` and return the concentration at indexes (`ri`, `ci`)
+Given the raster `dem` and the indexes (`r0`, `c0`) of the source, modify the postion values of object `sediment` and return the concentration at indexes (`ri`, `ci`)
 """
-function compute_result!( dtm::AbstractArray, r0::Int64, c0::Int64, ri::Int64, ci::Int64, plume::Plume )
-    plume.d, plume.y = Functions.compute_position(dtm, r0, c0, ri, ci, plume.wind_direction)
-    plume.z = agd.getband(dtm, 1)[ri, ci]
-    return calc_concentration!(lake)
+function Functions.compute_result!( dem::ArchGDAL.AbstractDataset, r0::Int64, c0::Int64, ri::Int64, ci::Int64, plume::Plume )
+    plume.d, plume.y = Functions.compute_position(dem, r0, c0, ri, ci, plume.wind_direction)
+    plume.z = agd.getband(dem, 1)[ri, ci]
+    return calc_concentration!(plume)
 end
+
+
+
+Functions.condition(value::Float64) = value > 0.01
 
 
 
 """
     run_plume( dem_file::AbstractString, source_file::AbstractString, stability::AbstractString, outdoor::AbstractString, resolution::Int64, wind_direction, concentration::Float64, wind_speed::Float64, stack_height::Float64, 
-               gas_speed::Float64=0.0, stack_diameter::Float64=0.0, smoke_temperature::Float64=0.0,  temperature::Float64=0.0, output_path::AbstractString=".\\otput_model_plume.tiff" )
+               gas_speed::Float64=0.0, stack_diameter::Float64=0.0, gas_temperature::Float64=0.0,  temperature::Float64=0.0, output_path::AbstractString=".\\otput_model_plume.tiff" )
 
 Create and save as `output_path` a raster containing the results of model of dispersion of airborne pollutants.
 
 # Arguments
-- `dem_file::AbstractString`: path to the raster containing the height of the terrain in each cell.
-- `source_file::AbstractString`: path to the shapefile containing the source point of the plume.
-- `stability::AbstractString`: information on the weather.
-- `outdoor::AbstractString`: 
+- `dem_file::String`: path to the raster containing the height of the terrain in each cell.
+- `source_file::String`: path to the shapefile containing the source point of the plume.
+- `stability::String`: information on the weather.
+- `outdoor::String`: 
 - `resolution::Int64`: size of the cell in meters.
 - `wind_direction``: angle of direction of the wind in degrees.
 - `concentration::Float64`: concentration of contaminants at the source.
@@ -127,16 +130,16 @@ Create and save as `output_path` a raster containing the results of model of dis
 - `stack_height::Float64 `: height of the stack, or height of the source of the plume.
 - `gas_speed::Float64=0.0`: movement speed of the gas.
 - `stack_diameter::Float64=0.0`: diameter of the stack emiting the plume.
-- `smoke_temperature::Float64=0.0`: temperature of the fumes.
+- `gas_temperature::Float64=0.0`: temperature of the fumes.
 - `temperature::Float64=0.0`: average temperature of the environment.
-- `output_path::AbstractString=".\\otput_model_plume.tiff"`: output file path. 
+- `output_path::String=".\\otput_model_plume.tiff"`: output file path. 
 """
-         #                                                                                                x_w             q / text_conc        u / wspeed        h_s / height
-function run_plume( dem_file::AbstractString, source_file::AbstractString, stability::AbstractString, outdoor::AbstractString, resolution::Int64, wind_direction, concentration::Float64, wind_speed::Float64, stack_height::Float64, 
-                  # v_s / gspeed         d_s / diameter            t_s / temp                    t_a / etemp
-                    gas_speed::Float64=0.0, stack_diameter::Float64=0.0, smoke_temperature::Float64=0.0,  temperature::Float64=0.0, output_path::AbstractString=".\\otput_model_plume.tiff" )
+         #                                                                                      q / text_conc                              x_w                    u / wspeed           h_s / height
+function run_plume(; dem_file::String, source_file::String, stability::String, outdoor::String, concentration::Float64, resolution::Int64, wind_direction::Int64, wind_speed::Float64, stack_height::Float64, 
+                  # v_s / gspeed            d_s / diameter            t_s / temp                    t_a / etemp
+                    gas_speed::Float64=0.0, stack_diameter::Float64=0.0, gas_temperature::Float64=0.0,  temperature::Float64=0.0, output_path::AbstractString=".\\otput_model_plume.tiff" )
 
-    geom = agd.getgeom( collect(agd.getlayer(agd.read(source_file), 0))[1] )
+    geom = agd.getgeom(collect(agd.getlayer(agd.read(source_file), 0))[1])
 
     if agd.geomdim(geom) != 0
         throw(DomainError(source_file, "The shapefile must contain a point."))
@@ -144,40 +147,40 @@ function run_plume( dem_file::AbstractString, source_file::AbstractString, stabi
 
     dem = agd.read(dem_file)
     refsys = agd.getproj(dem)
+    geotransform = agd.getgeotransform(dem)
 
-    if agd.importWKT(refsys) != agd.getspatialref(geom)
+    if refsys != agd.toWKT(agd.getspatialref(geom))
         throw(DomainError("The reference systems are not uniform. Aborting analysis."))
     end
 
     x_source = agd.getx(geom, 0)
     y_source = agd.gety(geom, 0)
-    r_source, c_source = toIndexes(geomtransform, x_source, y_source)
+    r_source, c_source = Functions.toIndexes(dem, x_source, y_source)
 
     # start_time = time.time()
 
     points = [ (r_source, c_source) ]
     values = [ concentration ]
- # NON CI INTERESSA DARE DEI VALORI COERENTI A d, y, E z PERCHE' AD OGNI CHIAMATA expand! LI RESETTA
-    plume = Plume(concentration, 0.0, 0.0, 0.0, stability, outdoor, wind_speed, stack_height, stack_diameter, gas_speed, smoke_temperature, temperature, wind_direction,0.0) 
-    expand!(points, values, dtm, r_source, c_source, plume)
+    plume = Plume(concentration, x_source, y_source, agd.getband(dem, 1)[r_source, c_source], stability, outdoor, wind_speed, stack_height, stack_diameter, gas_speed, gas_temperature, temperature, wind_direction, 0.0) 
+    Functions.expand!(points, values, dem, plume)
 
     maxR = maximum( point -> point[1], points )
     minR = minimum( point -> point[1], points )
     maxC = maximum( point -> point[2], points )
     minC = minimum( point -> point[2], points )
 
-    geotransform = agd.getgeotransform(dem)
-    geotransform[[1, 4]] .+= (minR - 1, maxC - 1) .* geotransform[[2, 6]]
-
-    #   data = [ isnothing( findfirst(p -> p == (r, c), points) ) ? noData : values[findfirst(p -> p == (r, c), points)] for r in minR:maxR, c in minC:maxC ]
-    data = fill(noDataValue, maxR-minR, maxC-minC)
+    geotransform[[1, 4]] = Functions.toCoords(dem, minR, minC)
+    noData = agd.getnodatavalue(agd.getband(dem, 1))
+    data = fill(noData, maxR-minR+1, maxC-minC+1)
+    if isnothing(data) || isempty(data)
+        throw(ErrorException("Analysis failed"))
+    end
     for r in minR:maxR, c in minC:maxC
-        match = findfirst(p -> p == (r, c), points)
+        match = findfirst( p -> p == (r, c), points )
         if !isnothing(match)
             data[r-minR+1, c-minC+1] = values[match]
         end
     end
-
     Functions.writeRaster(data, agd.getdriver("GTiff"), geotransform, resolution, refsys, noData, output_path)
 end
 
