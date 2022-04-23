@@ -94,7 +94,7 @@ end
 
 
 
-Functions.condition(value::Float64) = value > 0.01
+Functions.check_result(value::Float64) = value > 0.01
 
 
 
@@ -160,11 +160,9 @@ function run_sediment( dem_file::String, source_file::String, resolution::Float6
     
     #   start_time = time.time()
 
-    points = [ (r_source, c_source) ]
-    values = [ dredged_mass ]
     sediment = Sediment(dredged_mass, time, mean_depth, x_dispersion_coeff, y_dispersion_coeff, 0.0, 0.0, mean_flow_speed,
                         flow_direction, mean_sedimentation_velocity, time_intreval, current_oscillatory_amplitude, tide)
-    Functions.expand!(points, values, dem, sediment)
+    points, values = Functions.expand!(r_source, c_source, dredged_mass, dem, sediment)
 
     minR = minimum( point -> point[1], points )
     minC = minimum( point -> point[2], points )
@@ -181,7 +179,7 @@ function run_sediment( dem_file::String, source_file::String, resolution::Float6
             data[r-minR+1, c-minC+1] = values[match]
         end
     end
-    Functions.writeRaster(data, agd.getdriver("GTiff"), geotransform, resolution, refsys, noData, output_path)
+    Functions.writeRaster(data, agd.getdriver("GTiff"), geotransform, refsys, noData, output_path)
 end
 
 

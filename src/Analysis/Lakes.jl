@@ -62,7 +62,7 @@ end
 
 
 
-Functions.condition(value::Float64) = value > 0.01
+Functions.check_result(value::Float64) = value > 0.01
 
 
 
@@ -109,10 +109,8 @@ function run_lake(; dem_file::String, source_file::String, wind_direction::Int64
     velocity_x = √( round( flow_mean_speed * cos(deg2rad(wind_direction)), digits=3 )^2 )
     velocity_y = √( round( flow_mean_speed * sin(deg2rad(wind_direction)), digits=3 )^2 )
 
-    points = [ (r_source, c_source) ]
-    values = [ pollutant_mass ]
     lake = Lake(pollutant_mass, hours, 0, 0, fickian_x, fickian_y, velocity_x, velocity_y, wind_direction, λk)
-    Functions.expand!(points, values, dem, lake)
+    points, values = Functions.expand!(r_source, c_source, pollutant_mass, dem, lake)
 
     maxR = maximum( point -> point[1], points )
     minR = minimum( point -> point[1], points )
@@ -121,7 +119,7 @@ function run_lake(; dem_file::String, source_file::String, wind_direction::Int64
 
     geotransform = agd.getgeotransform(dem)
     geotransform[[1, 4]] = Functions.toCoords(dem, minR, minC)
-    noData = agd.getnodatavalue(agd.getband(dem, 1))
+    noData = Float32(agd.getnodatavalue(agd.getband(dem, 1)))
     data = fill(noData, maxR-minR+1, maxC-minC+1)
     for r in minR:maxR, c in minC:maxC
         match = findfirst( p -> p == (r, c), points )
@@ -129,7 +127,7 @@ function run_lake(; dem_file::String, source_file::String, wind_direction::Int64
             data[r-minR+1, c-minC+1] = values[match]
         end
     end
-    Functions.writeRaster(data, agd.getdriver("GTiff"), geotransform, resolution, refsys, noData, output_path)
+    Functions.writeRaster(data, agd.getdriver("GTiff"), geotransform, refsys, noData, output_path)
 end
 
 

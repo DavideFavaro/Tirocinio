@@ -107,8 +107,18 @@ function Functions.compute_result!( dem::ArchGDAL.AbstractDataset, r0::Int64, c0
 end
 
 
+#=
+NON CONOSCO ANCORA QUALE POSSA ESSERE (O SE CI SIA) UN CAMPO DI substance.db CHE RAPPRESENTA LA QUANTITA' MASSIMA DI UNA CERTA SOSTANZA NATURALMENTE PRESENTE.
+QUESTO VALORE MI CONSENTIREBBE DI SISTEMARE condition IN MODO CHE SI ADATTI AD OGNI SOSTANZA (NON TUTTE LE SOSTANZE SONO NATURALMENTE PRESENTI COME 0.01 unità).
+SUBSTANCE ID DEVE ESSERE PASSATO DALLA FUNZIONE CHIAMANTE (expand!) PER FARE CIO' SI DOVREBBE AGGIUNGERE UN CAMPO AGLI OGGETTI CHE TENGA CONTO DELLA SOSTANZA
+IN QUESTIONE E CHE QUEL CAMPO VENGA PASSATO (ALL'INTERNO DI expand!) A CONDITION NELLA VALUTAZIONE DELLA CONCENTRAZIONE RISULTANTE
 
-Functions.condition(value::Float64) = value > 0.01
+function Functions.condition(value::Float64, substance_id::Int64)
+ # Obtain the maximum normal concentration of the pollutant 
+    limit = FunctionsDB.substance_extract(substance_id, <CAMPO CHE DEFINISCE LA MASSIMA PRESENZA POSSIBILE IN NATURA DELLA SOSTANZA>)
+end
+=#
+Functions.check_result(value::Float64) = value > 0.01
 
 
 
@@ -158,11 +168,8 @@ function run_plume(; dem_file::String, source_file::String, stability::String, o
     r_source, c_source = Functions.toIndexes(dem, x_source, y_source)
 
     # start_time = time.time()
-
-    points = [ (r_source, c_source) ]
-    values = [ concentration ]
     plume = Plume(concentration, x_source, y_source, agd.getband(dem, 1)[r_source, c_source], stability, outdoor, wind_speed, stack_height, stack_diameter, gas_speed, gas_temperature, temperature, wind_direction, 0.0) 
-    Functions.expand!(points, values, dem, plume)
+    points, values = Functions.expand!(r_source, c_source, concentration, dem, plume)
 
     maxR = maximum( point -> point[1], points )
     minR = minimum( point -> point[1], points )
@@ -181,7 +188,7 @@ function run_plume(; dem_file::String, source_file::String, stability::String, o
             data[r-minR+1, c-minC+1] = values[match]
         end
     end
-    Functions.writeRaster(data, agd.getdriver("GTiff"), geotransform, resolution, refsys, noData, output_path)
+    Functions.writeRaster(data, agd.getdriver("GTiff"), geotransform, refsys, noData, output_path)
 end
 
 

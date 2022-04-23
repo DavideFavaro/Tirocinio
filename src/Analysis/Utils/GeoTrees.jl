@@ -13,6 +13,33 @@ const si = SpatialIndexing
 
 
 
+
+
+
+
+
+
+
+#=
+POTREBBE ESSERE UTILE AVERE DEI VETTORI DI APPOGGIO CHE CONTENGANO TUTTI I POSSIBILI VALORI DEI VARI ATTRIBUTI DEI POLIGONI,
+IN QUESTO VERIFICARE SE UN POLIGONO CON UN CERTO VALORE DI UN CERTO ATTRIBUTO ESISTE DIVENTA TRIVIALE, INVECE DI RICHIEDERE
+DI RICERCARE UN POLIGONO CON QUELL'ATTRIBUTO IN TUTTO L'ALBERO.
+=#
+mutable struct CCSTree
+# Serve un modo per simulare la possibilità di aggiungere campi in modo da poter creare strutture che si adattino al numero di
+# attributi rilevanti di cui si vuole ottenere la lista degli unici.
+    terrain_types::Dict{Int64, String}
+    tree::SpatialIndexing.RTree{Float64, 2}
+
+    CCSTree(tree) = new(Dict{Int64, String}[], tree)
+end
+
+
+
+
+
+
+
 """
     mbrtype( polygon::ArchGDAL.IGeometry{ArchGDAL.wkbPolygon} )
 
@@ -21,6 +48,7 @@ Return the type of the mbr returned by function `mbr()` applied to `polygon`
 function mbrtype( polygon::ArchGDAL.IGeometry{ArchGDAL.wkbPolygon} )
     return SpatialIndexing.HasMBR{ SpatialIndexing.Rect{Float64, 2} }
 end
+
 
 """
     mbr( polygon::ArchGDAL.IGeometry{ArchGDAL.wkbPolygon} )
@@ -82,6 +110,104 @@ distance( element::Union{SpatialIndexing.SpatialElem, SpatialIndexing.Node}, reg
 
 
 
+"""
+    createTree( file_path::String, branch_capacity::Int64=7, leaf_capacity::Int64=7 )
+
+Create a `SpatialIndexing.RTree{Float64, 2}` filled with the polygons contained in a shapefile at `file_path`.
+"""
+function createRTree( file_path::String, branch_capacity::Int64=7, leaf_capacity::Int64=7 )
+ # Obtain all the "features" ("polygons" + additional information) of the file
+    features = collect(agd.getlayer(agd.read(file_path), 0))
+ # Create the RTree (It contains an empty vector as the "terrain_types" field and the empty tree that we just defined as the field "tree")
+    tree = RTree{Float64, 2}(Float64, NamedTuple, branch_capacity=branch_capacity, leaf_capacity=leaf_capacity)
+ # Insert all of the relevant data of the features in the tree as nodes
+    for feature in features
+     # Obtain the geometry (polygon) of the feature
+        geom = agd.getgeom(feature, 0)
+     # Find the MBR of the polygon
+        feature_mbr = mbr(geom)
+     # Check if the MBR has a valid value
+        if si.isvalid(feature_mbr)
+         # If so insert a new node in the tree
+            si.insert!( tree, feature_mbr, agd.getfield(feature, :objectid), ( code=agd.getfield(feature, :codice_num), geometry=geom ) )
+        else
+            println("Omitted feature $(agd.getfield(feature, :objectid)), the feature mbr is not valid.")
+        end
+    end
+ # Check that the tree is well-build
+    si.check(tree)
+    return tree
+end
+
+
+
+"""
+    createCCSTree( file_path::String, branch_capacity::Int64=7, leaf_capacity::Int64=7 )
+
+Create a CCSTree based on a vectorial file at `file_path` containing a series of polygons decribing the terrain composition of an area.
+The  created object will contain a field `terrain_types` containing a `Vector{Tuple{Int64, String}}` holding the codes and descriptions of
+all the possible kinds of terrain found in the vectorial file.
+The "tree" field of the object will instead contain a `SpatialIndexing.RTree{Float64, 2}` with all the polygons of the file.
+"""
+function createCCSTree( file_path::String, branch_capacity::Int64=7, leaf_capacity::Int64=7 )
+ # Obtain all the "features" ("polygons" + additional information) of the file
+    features = collect(agd.getlayer(agd.read(file_path), 0))
+ # Create the RTree (empty)
+    tree = RTree{Float64, 2}(Float64, NamedTuple, branch_capacity=branch_capacity, leaf_capacity=leaf_capacity)
+ # Create the CCSTree corresponding to the RTree created above
+    ctree = CCSTree(tree)
+  # Insert all of the relevant data of all the features in the tree as nodes
+    for feature in features
+     # Obtain the geometry (polygon) of the feature
+        geom = agd.getgeom(feature, 0)
+     # Find the MBR of the polygon
+        feature_mbr = mbr(geom)
+     # Check if the MBR has a valid value
+        if si.isvalid(feature_mbr)
+         # Get the code that identifies the kind of landcover of the polygon
+            num_code = agd.getfield(feature, :codice_num)
+         # Insert the new node corresponding to the feature in the "tree" field of the CCSTree
+            si.insert!( ctree.tree, feature_mbr, agd.getfield(feature, :objectid), ( code=num_code, geometry=geom ) )
+         # Insert the landcover type in the dictionary in the field "terrain_types" of the CCSTree along with its description
+            push!( ctree.terrain_types, num_code => agd.getfield(feature, :legenda) )
+        else
+            println("Omitted feature $(agd.getfield(feature, :objectid)), the feature mbr is not valid.")
+        end
+    end
+  # Check that the tree is well-build
+    si.check(ctree.tree)
+    return ctree
+end
+
+
+
+"""
+    exists_terrain_type( tree::CCSTree, type_code::Int64 )
+
+Check if the type of terrain corresponding to `type_code` exists in at least one polygon of `tree`.
+"""
+exists_terrain_type( tree::CCSTree, type_code::Int64 ) = type_code in keys(tree.terrain_types)
+
+"""
+    exists_terrain_type( tree::CCSTree, type_description::String )
+
+Check if the type of terrain described by `type_description` exists in at least one polygon of `tree`.
+Note: `type_description` must match exactly the description of the terrain type, if the complete description is not
+known, consider using function `find_terrain_type_similar` instead.
+"""
+exists_terrain_type( tree::CCSTree, type_description::String ) = type_description in values(tree.terrain_types)
+
+
+
+"""
+    find_terrain_type_similar( tree::CCSTree, type::String )
+
+Return a `Dict{Int64, String}` containing all the codes and the respective descriptions in which the latter contains `type` as a substring. 
+"""
+find_terrain_type_similar( tree::CCSTree, type::String ) = filter( (k, v) -> contains(v, type), tree.terrain_types )
+
+
+
 # --------------------------------------------------------------- POLYGON SEARCH ---------------------------------------------------------------------------------------
 """
     findPolygons( node::SpatialIndexing.Leaf{T,N}, polygon::ArchGDAL.IGeometry{ArchGDAL.wkbPolygon} )::Vector{SpatialIndexing.SpatialElem} where {T, N}
@@ -123,6 +249,15 @@ Return all the polygons of `tree` intersected by, contained in or containing `po
 """
 function findPolygons( tree::SpatialIndexing.RTree{T,N}, polygon::ArchGDAL.IGeometry{ArchGDAL.wkbPolygon} ) where {T, N}
     return findPolygon(tree.root, polygon)
+end
+
+"""
+    findPolygons( tree::CCSTree, polygon::ArchGDAL.IGeometry{ArchGDAL.wkbPolygon} ) where {T, N}
+
+Return all the polygons of `tree` intersected by, contained in or containing `polygon`, or the polygon that conains it, or an empty `Vector{SpatialIndexing.SpatialElem}`, if there is no such polygon.
+"""
+function findPolygons( tree::CCSTree, polygon::ArchGDAL.IGeometry{ArchGDAL.wkbPolygon} ) where {T, N}
+    return findPolygon(tree.tree.root, polygon)
 end
 
 
@@ -184,6 +319,15 @@ function findKNN( tree::SpatialIndexing.RTree{T,N}, point::SpatialIndexing.Point
     return findKNN(tree.root, point, k)
 end
 
+"""
+    findKNN( tree::CCSTree, point::SpatialIndexing.Point{T,N}, k::Int64 ) where {T, N}
+
+Return the `k` `SpatialIndexing.SpatialElem`s contained in `tree` that are closest to `point` (at most k elements will be returned).
+"""
+function findKNN( tree::CCSTree, point::SpatialIndexing.Point{T,N}, k::Int64 ) where {T, N}
+    return findKNN(tree.tree.root, point, k)
+end
+
 
 
 # ------------------------------------------------------------- DISTANCE BASED SEARCH ----------------------------------------------------------------------------------
@@ -235,7 +379,6 @@ function findPolygons( node::SpatialIndexing.Branch{T,N,V}, point::SpatialIndexi
     return results[1:something( findfirst(res -> res[2] > distance, result), length(result) )]
 end
 
-
 """
     findPolygons( tree::SpatialIndexing.RTree{T,N}, point::SpatialIndexing.Point{T,N}, distance::Float64 ) where {T, N}
 
@@ -245,15 +388,28 @@ function findPolygons( tree::SpatialIndexing.RTree{T,N}, point::SpatialIndexing.
     return findPolygons(tree.root, point, distance)
 end
 
-
-
 """
-    saveTree( tree::SpatialIndexing.RTree{T, N}, output_file::AbstractString=".\\tree" ) where {T, N}
+    findPolygons( tree::CCSTree, point::SpatialIndexing.Point{T,N}, distance::Float64 ) where {T, N}
 
-Seve a the RTree `tree` as a file in the directory and with the name specified by `output_file` in Julia Data format 2 (JLD2).
+Return all the `SpatialIndexing.SpatialElem`s contained in `tree` that are within `distance` from `point`.
 """
-function saveTree( tree::SpatialIndexing.RTree{T, N}, output_file::AbstractString=".\\tree" ) where {T, N}
-    save_object(tree, output_file*".jld2")
+function findPolygons( tree::CCSTree, point::SpatialIndexing.Point{T,N}, distance::Float64 ) where {T, N}
+    return findPolygons(tree.tree.root, point, distance)
+end
+
+
+
+# ----------------------------------------------------------- LOADING AND SAVING -----------------------------------------------------------------------------
+"""
+    saveTree( tree::Union{SpatialIndexing.RTree{T, N}, CCSTree}, output_file::AbstractString=".\\tree.jld2" ) where {T, N}
+
+Save `tree` as a file in the directory and with the name specified by `output_file` in Julia Data format 2 (JLD2).
+"""
+function saveTree( tree::Union{SpatialIndexing.RTree{T, N}, CCSTree}, output_file::AbstractString=".\\tree.jld2" ) where {T, N}
+    if !occursin(output_file, ".jld2")
+        output_file *= ".jld2"
+    end
+    save_object(tree, output_file)
 end
 
 
@@ -269,9 +425,78 @@ end
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+mutable struct Fields
+    fields::Dict{Symbol, Any}
+
+    Fields(fields) = new(fields)
+end
+
+
+mutable struct Cesto
+    frutti::Fields
+
+    function Cesto( frutti..., numeri... )
+        if length(frutti) != length(numeri)
+            throw(DomainError("`frutti` e `numeri` per ogni frutto deve esserci un numero"))
+        end
+        for (f, n) in zip(frutti, numeri)
+            dict = Dict( Symbol(f) => n )
+        end
+    end 
+end
+
+
+
+
+
+
+using ArchGDAL
+
+const agd = ArchGDAL
+
+ccs_file = "C:\\Users\\Lenovo\\Documents\\GitHub\\Tirocinio\\resources\\Analysis data\\ccs\\ccs.shp"
+ccs = agd.read(ccs_file)
+features =  collect(agd.getlayer(ccs, 0))
+features[1]
+
+createTree(ccs_file)
+
+
+
+
 #= ---------------------------- TREE TESTING [V] --------------------------------
 
-#   ccs_shp = agd.read("C:\\Users\\DAVIDE-FAVARO\\Desktop\\Dati\\ccs WGS84\\ccs.shp")
+#   ccs_shp = agd.read("C:\\Users\\Lenovo\\Documents\\GitHub\\Tirocinio\\resources\\Analysis data\\ccs\\ccs.shp")
 ccs_shp = agd.read("D:\\Z_Tirocinio_Dati\\ccs WGS84\\ccs.shp")
 features =  collect(agd.getlayer(ccs_shp, 0))
 

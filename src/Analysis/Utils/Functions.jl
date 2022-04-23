@@ -45,12 +45,12 @@ Base.convert(::Type{Int64}, n::AbstractFloat) = round(Int64, n)
 
 
 """
-    writeRaster( data::Array{Float32}, driver::agd.Driver, geotransform::Vector{Float64}, refsys::AbstractString, noData::Real, output_path::AbstractString=".\\raster.tiff", output::Bool=false )
+    writeRaster( data::Array{Float32}, driver::ArchGDAL.Driver, geotransform::Vector{Float64}, refsys::AbstractString, noDataValue::Real, output_path::AbstractString )
 
 Given a NxMxH dimensional matrix `data`, create a raster file with H NxM bands as `output_path` file, with `refsys` and `geotransfrom` as spatial references,
 using `driver` to define the format.  
 """
-function writeRaster( data::Array{Float32}, driver::ArchGDAL.Driver, geotransform::Vector{Float64}, resolution::Real, refsys::AbstractString, noDataValue::Real, output_file_path::AbstractString=".\\raster.tiff" )
+function writeRaster( data::Array{Float32}, driver::ArchGDAL.Driver, geotransform::Vector{Float64}, refsys::AbstractString, noDataValue::Real, output_file_path::AbstractString )
     rows, cols, bands = length(size(data)) < 3 ? (size(data)..., 1) : size(data) 
     agd.create(output_file_path, driver=driver, width=rows, height=cols, nbands=bands, dtype=Float32) do res_raster
         for i in 1:bands
@@ -165,7 +165,7 @@ end
 
 
 
-function condition(value)
+function check_result( value )
     throw(DomainError("Using unspecialized function"))
 end
 
@@ -186,16 +186,15 @@ the desired analysis, implementing `Functions.compute_result!`.\n
 Lastly, The module must also implement a version of the `condition` function to check that the concentration on a cell matches standard acceptable values for the
 specific analsis.
 """
-function expand!( points::AbstractVector{Tuple{Int64, Int64}}, results::AbstractVector{Float64}, dem::ArchGDAL.AbstractDataset, object::AbstractAnalysisObject )
- # Maximum indexes for rows and columns.
-    max_r, max_c = size(agd.getband(dem, 1))
-    any(@. points[1] < 1 || points[1] > (max_r, max_c) ) && throw(DomainError(points, "The first element of vector `points` must correspond to a cell inside raster `dem`"))
- # Vector of displacements
-    v = [1, 0, -1]
- # Indexes of the cells that need to be checked, initially filled with the adjacents of the source.
-    new_points = [ ( points[1][1]+i, points[1][2]+j ) for i in v, j in v if (i == 0) ⊻ (j == 0) ]
- # Indexes of the cells that have already been checked.
-    visited = deepcopy(points)
+function expand( src_r::Int64, src_c::Int64, concentration::Float64, dem::ArchGDAL.AbstractDataset, object::AbstractAnalysisObject )
+    max_r, max_c = size(agd.getband(dem, 1)) # Maximum indexes for rows and columns.
+ # Check the input indexes are within the raster
+    ( src_r  < 1 || src_r > max_r || src_c < 1 || src_c > max_c ) && throw(DomainError(points, "The first element of vector `points` must correspond to a cell inside raster `dem`"))
+    points = [ (src_r, src_c) ] # Vector of valid points
+    results = [concentration] # Vector of concentrations
+    v = [1, 0, -1] # Vector of displacements
+    new_points = [( points[1][1]+i, points[1][2]+j ) for i in v, j in v if (i == 0) ⊻ (j == 0)] # Indexes of the cells that need to be checked, initially filled with the adjacents of the source.
+    visited = deepcopy(points) # Indexes of the cells that have already been checked.
  # While there are still points to verify.
     while !isempty(new_points)
      # Extract a point.
@@ -220,8 +219,8 @@ function expand!( points::AbstractVector{Tuple{Int64, Int64}}, results::Abstract
             end
         end
     end
+    return point, results
 end
-
 
 
 

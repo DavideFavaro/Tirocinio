@@ -239,7 +239,7 @@ end
 
 
 
-Functions.condition(value::Float64) = value > 0.01
+Functions.check_result(value::Float64) = value > 0.01
 
 
 
@@ -315,8 +315,6 @@ function run_leaching(; dem_file::String, source_file::String, contaminant::Stri
     y_source = agd.gety(geom, 0)
     r_source, c_source = toIndexes(dtm, x_source, y_source)
 
-    points = [ (r_source, c_source) ]
-    values = [ concentration ]
     #                                      ief,                    ro,           dz,               lf,            ve,             dgw               sw
     element = Leach(h, tera_w, tera_a, kd, effective_infiltration, soil_density, source_thickness, aquifer_depth, darcy_velocity, mixed_zone_depth, orthogonal_extension) 
     calc_kw!(element)
@@ -326,7 +324,7 @@ function run_leaching(; dem_file::String, source_file::String, contaminant::Stri
     
     daf = DAF(secondary_source_concentration, x_source, y_source, 0, 0, decay_coeff, darcy_velocity, kd, soil_density, tera_e, orthogonal_extension, time, acquifer_flow_direction, algorithm, option)
     # Fill points with the indexes of each point that will compose the result raster and values with the concentrations in the respective points 
-    Functions.expand!(points, values, dem, daf)
+    points, values = Functions.expand!(r_source, c_source, concentration, dem, daf)
 
     maxR = maximum( point -> point[1], points )
     minR = minimum( point -> point[1], points )
@@ -343,7 +341,7 @@ function run_leaching(; dem_file::String, source_file::String, contaminant::Stri
             data[r-minR+1, c-minC+1] = values[match]
         end
     end
-    Functions.writeRaster(data, agd.getdriver("GTiff"), geotransform, resolution, refsys, noData, path)
+    Functions.writeRaster(data, agd.getdriver("GTiff"), geotransform, refsys, noData, path)
 end
 
 
