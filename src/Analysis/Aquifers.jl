@@ -1,7 +1,6 @@
-module DiluitionAttenuationFactor
-"""
-Module for the modeling of the dispersion of pollutants in aquifiers.
-"""
+"""Module for the modeling of the dispersion of pollutants in aquifers."""
+module Aquifers
+
 
 
 using ArchGDAL
@@ -248,14 +247,14 @@ Functions.check_result(value::Float64) = value > 0.01
                     orthogonal_extension::Float64=10000.0, soil_density::Float64=1.70, source_thickness::Float64=1.0, darcy_velocity::Float64=0.000025, mixed_zone_depth::Float64=1.0,
                     decay_coeff::Float64=0.0, algorithm::Symbol=:fickian, option::Symbol=:continuous, output_path::AbstractString=".\\output_model_daf.tiff" )
 
-Run the simulation of leaching and dispersion of contaminants in an aquifier, returning a map of the possible worst case spreading of the contaminants.
+Run the simulation of leaching and dispersion of contaminants in an aquifer, returning a map of the possible worst case spreading of the contaminants.
 
 # Arguments
 - `dtm_file::String`: path to the raster of terrain.
 - `source_file::AbstractString`: path to the shapefile containing source point of the contaminants.
 - `contaminants`: type of substance.
 - `concentrations::Vector{Float64}`: concentration of the contaminants at the source.
-- `aquifer_depth::Float64`: depth of the aquifier in meters.
+- `aquifer_depth::Float64`: depth of the aquifer in meters.
 - `acquifer_flow_direction::Int64`: angle of direction of the flow in degrees.
 - `mean_rainfall::Float64`: average rainfall volume.
 - `texture`: type of terrain at the source.

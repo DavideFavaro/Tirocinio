@@ -15,6 +15,8 @@ end
 # Load the necessary packages
 begin
 	using ArchGDAL
+	using GeoStats
+	using Plots
 end
 
 # ╔═╡ 9b6db6b0-9a07-11ec-112e-5904bc97f187
@@ -22,7 +24,8 @@ end
 begin
 	include(".\\Data Gathering\\GroundData.jl")
 	include(".\\Data Gathering\\SatelliteData.jl")
-	include(".\\Analysis\\DiluitionAttenuationFactor.jl")
+	
+	include(".\\Analysis\\Aquifers.jl")
 	include(".\\Analysis\\Lakes.jl")
 	include(".\\Analysis\\Noises.jl")
 	include(".\\Analysis\\Plumes.jl")
@@ -30,23 +33,16 @@ begin
 end
 
 # ╔═╡ 1769fb6b-c6a6-4ab4-91eb-8a1f245b7d21
-# Packages and modules loading
+# Loading of modules and packages
 
 # ╔═╡ a12a30b3-8db3-4eaf-803f-b86aa4946d2a
 # Aliasing of the modules to shorten the code
 begin
+	const agd = ArchGDAL
+
  # Data gathering
 	const grdt = GroundData
 	const stdt = SatelliteData
-
- # Data Analysis
-	const daf = DiluitionAttenuationFactor
-	const lakes = Lakes
-	const noises = Noises
-	const plumes = Plumes
-	const sediments = Sediments
-
-	const agd = ArchGDAL
 end
 
 # ╔═╡ 810f6349-b471-44df-a60c-cfc0602cb3f9
@@ -57,7 +53,47 @@ end
 
 # ╔═╡ 3996736f-6216-4c5c-aa7e-844133995648
 # Data from the measurement stations in various regions (Alto Adige, Friuli Venezia Giulia, Lombardia, Trentino and Veneto)
-grdt.getGroundData( :METEO, grdt.AA, grdt.FVG, grdt.L, grdt.T, grdt.V )
+resmt, mresmt = grdt.getGroundData(:METEO, grdt.AA, grdt.FVG, grdt.L, grdt.T, grdt.V)
+
+# ╔═╡ 81190d46-872b-490f-95b7-17fcd02dd2e1
+unique(resmt.parameter)
+
+# ╔═╡ 0447a923-fcc3-4425-b17d-6a5bd4c38d83
+begin
+ # All relative humidity measurements
+	measurements = resmt[ resmt.parameter .== "Umidità relativa", : ]
+
+ # All the measurement's values
+	values = ( val = measurements.value, )
+
+ # All the coordinates of the measurements
+	coord = Tuple{Float64, Float64}[ (c[1], c[2]) for c in eachrow(measurements[:, [:longitude, :latitude]]) ]
+end
+
+# ╔═╡ 28ddd2f5-f53b-46c0-993c-d05b10fca309
+
+#= Based on:
+	https://juliaearth.github.io/GeoStats.jl/stable/
+=#
+begin
+ # Georeference data
+	D = georef(values, coord)
+
+ # Estimation domain
+	G = CartesianGrid(100, 100)
+
+ # Estimation problem
+	problem = EstimationProblem(D, G, :val)
+
+ # Solver from the list of solvers
+	solver = Kriging( :val => ( variogram = GaussianVariogram(range=35.0), ) )
+
+ # Solving problem
+	solution = solve(problem, solver)
+
+ # Solution plot
+	contourf(solution, clabels=true)
+end
 
 # ╔═╡ d2ca35b9-1912-4329-8ddd-2020b5852ae9
 # Data Analysis testing
@@ -68,29 +104,30 @@ grdt.getGroundData( :METEO, grdt.AA, grdt.FVG, grdt.L, grdt.T, grdt.V )
 # ╔═╡ 4450aaa2-f049-44df-9bd7-43c13fdaaa3e
 # Digital Terrain Model, the main raster for the analysis, reppresents Veneto
 begin
-	dtm_file = "..\\resources\\Analysis data\\DTM_wgs84.tiff"
+	dtm_file = "..\\resources\\Analysis data\\DTM_32.tiff"
 	dtm = agd.readraster(dtm_file)
 end
 
 # ╔═╡ b7699c02-99a1-4010-afc8-816da12e2c25
 # Create a source point to test the analysis functions
 begin
-	# Coordinates of the source
+ # Coordinates of the source
+    # lat, lon = (11.930065824163105, 45.425861311724816) # WGS84
 	lat, lon = (726454.9302346368, 5.025993899219433e6)
-	#lat, lon = (11.930065824163105, 45.425861311724816) # WGS84
-	# Path to the source shapefile
+ # Path to the source shapefile
 	source_dir = "..\\resources\\Analysis data\\source_shapefile"
-	# Directory holding the `source` files
+ # Directory holding the `source` files
 	!isdir(source_dir) && mkdir(source_dir)
-	# Creation of a shapefile containing the point if not already existing
-	if "source.shp" ∉ readdir(source_dir)
+ # Creation of a shapefile containing the point if not already existing
+	if "source_32.shp" ∉ readdir(source_dir)
 		agd.create(
-			source_dir*"\\source.shp",
+			source_dir*"\\source_32.shp",
 			driver = agd.getdriver("ESRI Shapefile")
 		) do ds
 			agd.createlayer(
 				geom = agd.wkbPoint,
-				spatialref = agd.importEPSG(4326)
+				# spatialref = agd.importEPSG(4326) # WGS84
+            	spatialref = agd.importEPSG(32632)
 			) do layer
         		agd.createfeature(layer) do feature
             		agd.setgeom!(feature, agd.createpoint(lat, lon))
@@ -99,11 +136,14 @@ begin
 			end
 		end
 	end
-	source_file = source_dir*"\\source.shp"
+	source_file = source_dir*"\\source_32.shp"
 end
 
 # ╔═╡ e960080e-05a5-480a-b27f-4149153300e4
 # Analysis functions execution
+
+# ╔═╡ 4b7f821c-c019-4b41-a58a-96edee0566c1
+# Pollutants diffusion in an aquifer
 
 # ╔═╡ 75eaae0c-55e9-4de5-9d31-f405f60f5863
 #=
@@ -133,11 +173,24 @@ mixed_zone_depth: (Float64)
 decay_coeff: (Float64)
 	coefficiente di decadimento?
 =#
-daf.run_leach(source_file, contaminants, concentrations, aquifer_depth,
-	acquifer_flow_direction, mean_rainfall, texture, 25, 1,
-	orthogonal_extension, soil_density, source_thickness, darcy_velocity,
-	mixed_zone_depth, decay_coeff, :fickian, :continuous,
-	"..\\resources\\Analysis data\\Analysis results\\daf.tiff")
+aqf.run_leaching(
+	source_file = source_file,
+	contaminants = "Tetracloroetilene (PCE)",
+	concentrations = 100.0,
+	aquifer_depth = 1000.0,
+	acquifer_flow_direction = 0,
+	mean_rainfall = 20.0,
+	texture = "sand",
+	resolution = 25,
+	time = 10,
+	orthogonal_extension = 10.0,
+	darcy_velocity = 0.000025,
+	mixed_zone_depth = 1580.0,
+	option = :domenico,
+	output_path = "..\\resources\\Analysis data\\Analysis results\\test_aquifer.tiff")
+
+# ╔═╡ d8f5f781-6d0d-48e5-b7be-63c6c41fe94a
+# Polutants dispersion in lakes
 
 # ╔═╡ f62e94e9-9c0c-4ed7-b87d-c0d958257d59
 #=
@@ -156,9 +209,21 @@ fickian_y: (Float64)
 λk: (Float64)
 	?
 =#
-lakes.run_lake(source_file, wind_direction, pollutant_mass, flow_mean_speed, 25,
-	hours, fickian_x, fickian_y, λk,
-	"..\\resources\\Analysis data\\Analysis results\\lake.tiff")
+lakes.run_lake(
+	dem_file = dtm_file,
+	source_file = source_file,
+	wind_direction = 0,
+	pollutant_mass = 2000.0,
+	flow_mean_speed = 0.03,
+	resolution = 25,
+	hours = 10,
+	fickian_x = 4.0,
+	fickian_y = 3.0,
+	output_path = "..\\resources\\Analysis data\\Analysis results\\test_lake.tiff"
+)
+
+# ╔═╡ 537c45ac-88c6-4a4b-96ec-a5021f69ee5a
+# Noise pollution
 
 # ╔═╡ 725222e8-960b-4618-8b3c-aa493caf7c16
 #=
@@ -169,11 +234,16 @@ intensità del suono
 frequenza del suono
 =#
 noises.run_noise(
-	dtm_file,
-	"A",
-	source_file,
-	293.15, 0.2, 110.0, 400.0
+    dem_file = dtm_file,
+    source_file = source_file,
+    temperature_K = 293.15,
+    relative_humidity = 0.2,
+    intensity_dB = 110.0,
+    frequency = 400.0 
 )
+
+# ╔═╡ 83a9cd5e-041c-4997-ae8d-d1027f297b96
+# Airborne pollutants dispersion from a stack
 
 # ╔═╡ 7c9a6143-5331-42dd-9541-052d411bc284
 #=
@@ -200,9 +270,25 @@ smoke_temperature: (Float64)
 temperature: (Float64)
 	temperatura dell'ambiente.
 =#
-plumes.run_plume(dtm_file, source_file, stability, 25, wind_direction, concentration,
-	wind_speed, stack_height, gas_speed, stack_diameter, smoke_temperature,
-	temperature, "..\\resources\\Analysis test data\\Analysis results\\plumes.tiff")
+plumes.run_plume(
+	dem_file = dtm_file,
+	source_file = source_file,
+	stability = "a",
+	outdoor = "c",
+	concentration = 10000.0,
+	resolution = 25,
+	wind_direction = 0,
+	wind_speed = 1.0,
+	stack_height = 80.0,
+	gas_speed = 0.1,
+	stack_diameter = 1.0,
+	gas_temperature = 180.0,
+	temperature = 18.0,
+	output_path = "..\\resources\\Analysis test data\\Analysis results\\test_plumes.tiff"
+)
+
+# ╔═╡ 3173f593-c0af-4a14-86a6-93d91109edca
+# Pollutants sedimentation
 
 # ╔═╡ 928d1a74-86a8-488c-92fd-b660794db328
 #=
@@ -229,13 +315,23 @@ current_oscillatory_amplitude: (Float64)
 tide: (Int64)
 	ciclo di marea in ore?.
 =#
-sediments.run_sediment(dtm_file, source_file, 25, mean_flow_speed, mean_depth,
-	x_dispersion_coeff, y_dispersion_coeff, dredged_mass, flow_direction,
-	mean_sedimentation_velocity, time, time_intreval, current_oscillatory_amplitude,
-	tide, "..\\resources\\Analysis data\\Analysis results\\sediments.tiff")
-
-# ╔═╡ 58c02292-7c92-400d-acc5-86b79dd96162
-
+sediments.run_sediment(
+	dem_file = dtm_file,
+	source_file = source_file,
+	resolution = 25,
+	mean_flow_speed,
+	mean_depth,
+	x_dispersion_coeff,
+	y_dispersion_coeff,
+	dredged_mass,
+	flow_direction,
+	mean_sedimentation_velocity,
+	time,
+	time_intreval,
+	current_oscillatory_amplitude,
+	tide,
+	output_path = "..\\resources\\Analysis data\\Analysis results\\test_sediments.tiff"
+)
 
 # ╔═╡ Cell order:
 # ╠═1769fb6b-c6a6-4ab4-91eb-8a1f245b7d21
@@ -246,14 +342,21 @@ sediments.run_sediment(dtm_file, source_file, 25, mean_flow_speed, mean_depth,
 # ╠═810f6349-b471-44df-a60c-cfc0602cb3f9
 # ╠═cee41885-9767-4bbc-aeca-fdcdc72add39
 # ╠═3996736f-6216-4c5c-aa7e-844133995648
+# ╠═81190d46-872b-490f-95b7-17fcd02dd2e1
+# ╠═0447a923-fcc3-4425-b17d-6a5bd4c38d83
+# ╠═28ddd2f5-f53b-46c0-993c-d05b10fca309
 # ╠═d2ca35b9-1912-4329-8ddd-2020b5852ae9
 # ╠═9e8d41ce-4582-44ff-890c-7d89cdce9984
 # ╠═4450aaa2-f049-44df-9bd7-43c13fdaaa3e
 # ╠═b7699c02-99a1-4010-afc8-816da12e2c25
 # ╠═e960080e-05a5-480a-b27f-4149153300e4
+# ╠═4b7f821c-c019-4b41-a58a-96edee0566c1
 # ╠═75eaae0c-55e9-4de5-9d31-f405f60f5863
+# ╠═d8f5f781-6d0d-48e5-b7be-63c6c41fe94a
 # ╠═f62e94e9-9c0c-4ed7-b87d-c0d958257d59
+# ╠═537c45ac-88c6-4a4b-96ec-a5021f69ee5a
 # ╠═725222e8-960b-4618-8b3c-aa493caf7c16
+# ╠═83a9cd5e-041c-4997-ae8d-d1027f297b96
 # ╠═7c9a6143-5331-42dd-9541-052d411bc284
+# ╠═3173f593-c0af-4a14-86a6-93d91109edca
 # ╠═928d1a74-86a8-488c-92fd-b660794db328
-# ╠═58c02292-7c92-400d-acc5-86b79dd96162

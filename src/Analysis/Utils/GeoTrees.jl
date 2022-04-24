@@ -3,6 +3,7 @@ module GeoTrees
 
 
 
+using Revise
 using ArchGDAL
 using SpatialIndexing
 using JLD2
@@ -26,18 +27,54 @@ IN QUESTO VERIFICARE SE UN POLIGONO CON UN CERTO VALORE DI UN CERTO ATTRIBUTO ES
 DI RICERCARE UN POLIGONO CON QUELL'ATTRIBUTO IN TUTTO L'ALBERO.
 =#
 mutable struct CCSTree
-# Serve un modo per simulare la possibilità di aggiungere campi in modo da poter creare strutture che si adattino al numero di
-# attributi rilevanti di cui si vuole ottenere la lista degli unici.
-    terrain_types::Dict{Int64, String}
+    terrain_types::Dict{Float64, String}
     tree::SpatialIndexing.RTree{Float64, 2}
 
-    CCSTree(tree) = new(Dict{Int64, String}[], tree)
+    CCSTree(tree) = new(Dict{Float64, String}(), tree)
 end
 
 
 
 
 
+"""
+    Base.show(io::IO, rtree::SpatialIndexing.RTree{T, N})
+
+Write a text reppresentation of `SpatialIndexing.RTree{T, N}` object `rtree` to the output stream `io`.
+"""
+function Base.show( io::IO, rtree::SpatialIndexing.RTree{T, N} ) where {T, N}
+    println(io, typeof(rtree), ":")
+    println(io, "\tPolygons: ", rtree.nelems)
+    println(io, "\tLevels: ", rtree.root.level)
+    println(io, "\tNodes per level:")
+    println(io, "\t", reverse(rtree.nnodes_perlevel) )
+    println(io, "\tRoot MBR:", rtree.root.mbr)
+end
+
+"""
+    Base.show(io::IO, ccstree::CCSTree)
+
+Write a text reppresentation of `CCSTree` object `ccstree` to the output stream `io`.
+"""
+function Base.show( io::IO, ccstree::CCSTree )
+    println(io, typeof(ccstree), ":")
+    println(io, "\tTerrain typologies: ", length(ccstree.terrain_types))
+    println(io, "\tPolygons: ", ccstree.tree.nelems)
+    println(io, "\tLevels: ", ccstree.tree.root.level)
+    println(io, "\tNodes per level:")
+    println(io, "\t", reverse(ccstree.tree.nnodes_perlevel) )
+    println(io, "\tRoot MBR:", ccstree.tree.root.mbr)
+end
+
+
+"""
+    SpatialIndexing.check( ccstree::CCSTree )
+
+Check wether a `CCSTree` is well formed.
+"""
+function check( ccstree::CCSTree )
+    return si.check(ccstree.tree)
+end
 
 
 """
@@ -135,8 +172,7 @@ function createRTree( file_path::String, branch_capacity::Int64=7, leaf_capacity
         end
     end
  # Check that the tree is well-build
-    si.check(tree)
-    return tree
+    return si.check(tree) ? tree : throw(DomainError("Error in the creation of the tree, check input parameters"))
 end
 
 
@@ -152,10 +188,8 @@ The "tree" field of the object will instead contain a `SpatialIndexing.RTree{Flo
 function createCCSTree( file_path::String, branch_capacity::Int64=7, leaf_capacity::Int64=7 )
  # Obtain all the "features" ("polygons" + additional information) of the file
     features = collect(agd.getlayer(agd.read(file_path), 0))
- # Create the RTree (empty)
-    tree = RTree{Float64, 2}(Float64, NamedTuple, branch_capacity=branch_capacity, leaf_capacity=leaf_capacity)
- # Create the CCSTree corresponding to the RTree created above
-    ctree = CCSTree(tree)
+ # Create the CCSTree from an empty RTree
+    ccstree = CCSTree( RTree{Float64, 2}(Float64, NamedTuple, branch_capacity=branch_capacity, leaf_capacity=leaf_capacity) )
   # Insert all of the relevant data of all the features in the tree as nodes
     for feature in features
      # Obtain the geometry (polygon) of the feature
@@ -167,16 +201,15 @@ function createCCSTree( file_path::String, branch_capacity::Int64=7, leaf_capaci
          # Get the code that identifies the kind of landcover of the polygon
             num_code = agd.getfield(feature, :codice_num)
          # Insert the new node corresponding to the feature in the "tree" field of the CCSTree
-            si.insert!( ctree.tree, feature_mbr, agd.getfield(feature, :objectid), ( code=num_code, geometry=geom ) )
+            si.insert!( ccstree.tree, feature_mbr, agd.getfield(feature, :objectid), ( code=num_code, geometry=geom ) )
          # Insert the landcover type in the dictionary in the field "terrain_types" of the CCSTree along with its description
-            push!( ctree.terrain_types, num_code => agd.getfield(feature, :legenda) )
+            push!( ccstree.terrain_types, num_code => agd.getfield(feature, :legenda) )
         else
             println("Omitted feature $(agd.getfield(feature, :objectid)), the feature mbr is not valid.")
         end
     end
   # Check that the tree is well-build
-    si.check(ctree.tree)
-    return ctree
+    return check(ccstree) ? ccstree : throw(DomainError("Error in the creation of the tree, check input parameters"))
 end
 
 
@@ -336,7 +369,7 @@ end
 
 Return all the `SpatialIndexing.SpatialElem`s children of `node` that are within `distance` from point.
 """
-function findPolygons( node::SpatialIndexing.Leaf{T,N}, point::SpatialIndexing.Point{T,N} distance::Float64 ) where {T, N}
+function findPolygons( node::SpatialIndexing.Leaf{T,N}, point::SpatialIndexing.Point{T,N}, distance::Float64 ) where {T, N}
     agd_point = agd.createpoint(point.coord...)
     results = sort!( # 2) Sort the children in increasing order of distance from `point`
         map( # 1) Map every children (they will all be `SpatialElements`) of the node to the distance between its centroid and `point`
@@ -417,7 +450,7 @@ end
 """
     loadTree( tree_file::AbstractString )
 
-Load an Rtree saved as `tree_file`.
+Load a `SpatialIndexing.RTree{T, N}` or a `CCSTree` saved as `tree_file`.
 """
 function loadTree( tree_file::AbstractString )
     return load_object(tree_file) 
@@ -454,7 +487,9 @@ end
 
 
 
-
+#=
+# Serve un modo per simulare la possibilità di aggiungere campi in modo da poter creare strutture che si adattino al numero di
+# attributi rilevanti di cui si vuole ottenere la lista degli unici.
 mutable struct Fields
     fields::Dict{Symbol, Any}
 
@@ -474,7 +509,7 @@ mutable struct Cesto
         end
     end 
 end
-
+=#
 
 
 
@@ -489,7 +524,11 @@ ccs = agd.read(ccs_file)
 features =  collect(agd.getlayer(ccs, 0))
 features[1]
 
-createTree(ccs_file)
+
+ccstree = createCCSTree("C:\\Users\\Lenovo\\Documents\\GitHub\\Tirocinio\\resources\\Analysis data\\ccs\\ccs.shp")
+
+
+rtree = createRTree("C:\\Users\\Lenovo\\Documents\\GitHub\\Tirocinio\\resources\\Analysis data\\ccs\\ccs.shp")
 
 
 
