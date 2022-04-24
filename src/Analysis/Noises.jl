@@ -1,7 +1,5 @@
+"""Module for the modelling of noise pollution."""
 module Noises
-"""
-Module for the modelling of noise pollution.
-"""
 
 
 
@@ -9,6 +7,7 @@ using ArchGDAL
 using GeoArrays
 using Plots
 using Shapefile
+
 
 
 include(".\\Utils\\Functions.jl")
@@ -1190,7 +1189,7 @@ Create and save as `output_path` a raster containing the results of model of dis
 - `frequency::Float64`: frequency of the sound in hertz.
 """
 # function noise_level( dtm::GeoArrays.GeoArray{Float32}, x0::Float64, y0::Float64, relative_humidity::Float64, temperature_k::FLoat64, frequency::Int64, noData::Float32 )
-function run_noise( dem_file::AbstractString, terrain_impedences_file::AbstractString, source_file::AbstractString, temperature_K::Float64, relative_humidity::Float64, intensity_dB::Float64, frequency::Float64 )
+function run_noise(; dem_file::AbstractString, terrain_impedences_file::AbstractString, source_file::AbstractString, temperature_K::Float64, relative_humidity::Float64, intensity_dB::Float64, frequency::Float64 )
  # Input rasters and source point
     noData = -9999.0f0
     dtm = replace( ga.read(dem_file), missing => noData )

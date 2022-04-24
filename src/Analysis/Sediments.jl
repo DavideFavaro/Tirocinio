@@ -1,7 +1,6 @@
+"""Module for marine sedimentation analysis."""
 module Sediments
-"""
-Module for marine sedimentation analysis.
-"""
+
 
 
 using ArchGDAL

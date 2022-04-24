@@ -1,7 +1,5 @@
+"""Module for the modelling of pollutants' dispersion in the atmosphere."""
 module Plumes
-"""
-Module for the modelling of pollutants' dispersion in the atmosphere.
-"""
 
 
 

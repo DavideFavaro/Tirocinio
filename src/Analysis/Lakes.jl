@@ -1,7 +1,6 @@
+"""Module for the modeling of dispersion of pollutants in bodies of water."""
 module Lakes
-"""
-Module for the modeling of dispersion of pollutants in bodies of water.
-"""
+
 
 
 using ArchGDAL
@@ -77,7 +76,7 @@ Create and save as `output_path` a raster containing the results of model of dis
 - `source_file::String`: path to the shapefile containing the source point of the contaminants.
 - `wind_direction::Int64`: direction of the wind as an angle in degrees.
 - `pollutant_mass::Float64`: initial mass of contaminants.
-- `flow_mean_speed::Float64`:  mean flow speed of the water.
+- `mean_flow_speed::Float64`:  mean flow speed of the water.
 - `resolution::Int64`: size of the cell for the analysis.
 - `hours::Int64`: time span of the analysis in hours.
 - `fickian_x::Float64=0.05`
@@ -85,7 +84,7 @@ Create and save as `output_path` a raster containing the results of model of dis
 - `λk::::Float64=0.0`
 - `output_path::AbstractString=".\\lake_otput_model.tiff"`: output file path.
 """
-function run_lake(; dem_file::String, source_file::String, wind_direction::Int64, pollutant_mass::Float64, flow_mean_speed::Float64, resolution::Int64,
+function run_lake(; dem_file::String, source_file::String, wind_direction::Int64, pollutant_mass::Float64, mean_flow_speed::Float64, resolution::Int64,
                     hours::Int64, fickian_x::Float64=0.05, fickian_y::Float64=0.05, λk::Float64=0.0, output_path::String=".\\lake_otput_model.tiff" )
     geom = agd.getgeom(collect(agd.getlayer(agd.read(source_file), 0))[1])
     
@@ -106,8 +105,8 @@ function run_lake(; dem_file::String, source_file::String, wind_direction::Int64
     r_source, c_source = Functions.toIndexes(dem, x_source, y_source)
 
     hours *= 3600
-    velocity_x = √( round( flow_mean_speed * cos(deg2rad(wind_direction)), digits=3 )^2 )
-    velocity_y = √( round( flow_mean_speed * sin(deg2rad(wind_direction)), digits=3 )^2 )
+    velocity_x = √( round( mean_flow_speed * cos(deg2rad(wind_direction)), digits=3 )^2 )
+    velocity_y = √( round( mean_flow_speed * sin(deg2rad(wind_direction)), digits=3 )^2 )
 
     lake = Lake(pollutant_mass, hours, 0, 0, fickian_x, fickian_y, velocity_x, velocity_y, wind_direction, λk)
     points, values = Functions.expand!(r_source, c_source, pollutant_mass, dem, lake)
