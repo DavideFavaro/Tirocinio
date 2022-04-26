@@ -5,6 +5,7 @@ module Aquifers
 
 using ArchGDAL
 using Dates
+using SpecialFunctions
 
 
 
@@ -22,10 +23,11 @@ const agd = ArchGDAL
 
 
 mutable struct Leach
-    h
-    tera_w
-    tera_a
-    kd
+ # Parameters
+    h::Float64
+    tera_w::Float64
+    tera_a::Float64
+    kd::Float64
     effective_infiltration::Float64
     soil_density::Float64
     source_thickness::Float64
@@ -33,18 +35,19 @@ mutable struct Leach
     darcy_velocity::Float64
     mixed_zone_depth::Float64
     orthogonal_width::Float64
-  
-    kw
-    koc
-    ldf
-    sam
-    leaching_factor
-  
+ # Computational results
+    kw::Float64
+    koc::Float64
+    ldf::Float64
+    sam::Float64
+    leaching_factor::Float64
+
     Leach(h,tera_w,tera_a,kd,effective_infiltration,soil_density,source_thickness,aquifer_depth,darcy_velocity,mixed_zone_depth,orthogonal_width) = new(h,tera_w,tera_a,kd,effective_infiltration,soil_density,source_thickness,aquifer_depth,darcy_velocity,mixed_zone_depth,orthogonal_width)
 end
 
 
 mutable struct DAF <: Functions.AbstractAnalysisObject
+ # Parameters
     secondary_source_concentration::Float64
     x::Float64
     y::Float64
@@ -52,21 +55,20 @@ mutable struct DAF <: Functions.AbstractAnalysisObject
     α_y::Float64
     decay_coeff::Float64
     darcy_velocity::Float64
-    kd
+    kd::Float64
     soil_density::Float64
-    tera_e
-    orthogonal_extension::Float64
+    tera_e::Float64
+    orthogonal_width::Float64
     time::Int64
-
-    acquifer_flow_direction::Int64
+    direction::Int64
     algorithm::Symbol
     option::Symbol
-  
+ # Computational results
     R::Float64
     DAF::Float64
     DAF_tot::Float64
-  
-    DAF(secondary_source_concentration,x,y,α_x,α_y,decay_coeff,darcy_velocity,kd,soil_density,tera_e,orthogonal_extension,time,acquifer_flow_direction,algorithm,option) = new(secondary_source_concentration,x,y,α_x,α_y,decay_coeff,darcy_velocity,kd,soil_density,tera_e,orthogonal_extension,time,acquifer_flow_direction,algorithm,option)
+
+    DAF(secondary_source_concentration,x,y,α_x,α_y,decay_coeff,darcy_velocity,kd,soil_density,tera_e,orthogonal_width,time,direction,algorithm,option) = new(secondary_source_concentration,x,y,α_x,α_y,decay_coeff,darcy_velocity,kd,soil_density,tera_e,orthogonal_width,time,direction,algorithm,option)
 end
 
 
@@ -83,13 +85,13 @@ end
 
 function calc_ldf!( l::Leach )
     darcy = l.darcy_velocity * 100.0 * 86400.0 * 365.0
-    l.ldf = 1 + ( darcy * ( l.mixed_zone_depth / ( l.effective_infiltration * l.W ) ) )
+    l.ldf = 1 + ( darcy * ( l.mixed_zone_depth / ( l.effective_infiltration * l.orthogonal_width ) ) )
     return l.ldf
 end
 
 
 function calc_sam!( l::Leach )
-    l.sam = l.dz/l.lf
+    l.sam = l.source_thickness / l.aquifer_depth
     return l.sam    
 end
   
@@ -103,10 +105,8 @@ end
 
 # ================================================ DAF functions ====================================================================================
 
-#   LE FUNZIONI DI `DAF` USANO LA FUNZIONE erf DI PYTHON IN JULIA TALE FUNZIONE SI TROVA NEL PACCHETTO `SpecialFunctions.jl`
-
 function calc_R!( c::DAF )
-    c.R = 1.0 + ( c.kd * ( c.ro_s / c.tera_e ) )
+    c.R = 1.0 + ( c.kd * ( c.soil_density / c.tera_e ) )
     return c.R
 end
 
@@ -124,16 +124,12 @@ function calc_DAF_ispra!( c::DAF )
     if c.α_y == 0.0
       c.α_y = c.α_x / 3.0
     end
-    R = 1.0 + ( c.kd * ( c.ro_s / c.tera_e ) )
-    daf1 = 0.50ℯ^( ( c.x / 2.0c.α_x ) * ( 1 - √( 1.0 + ( ( 4.0c.decay_coeff * c.α_x * R ) / c.v_e ) ) ) )
-    #daf1 = exp( ( c.x / ( 2c.α_x ) ) )
-    #daf2 = erf( c.s_w / ( 4√( c.α_y * c.x ) ) )
-    daf21 = erf( ( c.y + 0.5c.s_w ) / ( 2.0√( c.α_y * c.x ) ) )
-    daf22 = erf( ( c.y - 0.5c.s_w ) / ( 2.0√( c.α_y * c.x ) ) )
-    #daf_prova = erf( ( c.y + 0.5c.s_w ) / ( 2√( c.α_y * c.x ) ) )
+    R = 1.0 + ( c.kd * ( c.soil_density / c.tera_e ) )
+    daf1 = 0.50ℯ^( ( c.x / 2.0c.α_x ) * ( 1 - √( 1.0 + ( ( 4.0c.decay_coeff * c.α_x * R ) / c.darcy_velocity ) ) ) )
+    daf21 = erf( ( c.y + 0.5c.orthogonal_width ) / ( 2.0√( c.α_y * c.x ) ) )
+    daf22 = erf( ( c.y - 0.5c.orthogonal_width ) / ( 2.0√( c.α_y * c.x ) ) )
     daf3 = daf21 - daf22
     DAF_tot = daf1 * daf3
-  
     return DAF_tot
 end
 
@@ -145,10 +141,10 @@ function calc_DAF_ispra2!( c::DAF )
     if c.α_y == 0.0
       c.α_y = c.α_x / 3.0
     end
-    #daf1 = ( c.x / 2c.α_x ) * ( 1 - √( 1 + ( ( 4c.decay_coeff * c.α_x * c.R ) / c.v_e ) ) )
-    daf1 = exp( c.x / ( 2c.α_x ) * 0 )
+    #daf1 = ( c.x / 2c.α_x ) * ( 1 - √( 1 + ( ( 4c.decay_coeff * c.α_x * c.R ) / c.darcy_velocity ) ) )
+    daf1 = exp( c.x / ( 2.0c.α_x ) * 0 )
     #daf1e = exp(daf1)
-    daf2 = erf( c.s_w / ( 4√( c.α_y * c.x ) ) )
+    daf2 = erf( c.orthogonal_width / ( 4.0√( c.α_y * c.x ) ) )
     c.DAF = daf1 * daf2
     return c.DAF
 end
@@ -156,18 +152,16 @@ end
 
 function calc_DAF!( c::DAF )
     if c.α_x == 0
-      c.α_x = 0.1( c.x / 100 )
+      c.α_x = 0.1( c.x / 100.0 )
     end
     if c.α_y == 0
-      c.α_y = c.α_x / 3
+      c.α_y = c.α_x / 3.0
     end
-  
-    dx = c.α_x * c.v_e
-    dy = c.α_y * c.v_e
-    daf_a = c.secondary_source_concentration / ( 4c.tera_e * π * c.T * √(dx * dy) )
-    daf_b = ℯ^( -( ( (( c.x - (c.v_e * c.T) )^2) / (4dx * c.T) ) + ((c.y^2) / ( 4dy *c.T )) ) )   
+    dx = c.α_x * c.darcy_velocity
+    dy = c.α_y * c.darcy_velocity
+    daf_a = c.secondary_source_concentration / ( 4.0 * c.tera_e * π * c.time * √(dx * dy) )
+    daf_b = ℯ^( -( ( (( c.x - (c.darcy_velocity * c.time) )^2.0) / (4.0 * dx * c.time) ) + ((c.y^2.0) / (4.0 * dy *c.time)) ) )
     c.DAF = daf_a * daf_b
-  
     return c.DAF
 end
 
@@ -176,12 +170,10 @@ function calc_DAF_uni!( c::DAF )
     if c.α_x == 0
       c.α_x = 0.1c.x
     end
-  
-    dx = c.α_x * c.v_e
-    daf_a = c.secondary_source_concentration / ( 2c.tera_e * √( 4dx * π * c.T ) ) 
-    daf_b = ℯ^( -(( ((c.x - (c.v_e * c.T))^2) / ( 4dx * c.T ) )) )
+    dx = c.α_x * c.darcy_velocity
+    daf_a = c.secondary_source_concentration / ( 2.0 * c.tera_e * √( 4.0 * dx * π * c.time ) ) 
+    daf_b = ℯ^( -(( ((c.x - (c.darcy_velocity * c.time))^2.0) / (4.0 * dx * c.time) )) )
     c.DAF = daf_a * daf_b
-  
     return c.DAF
 end
 
@@ -189,23 +181,22 @@ end
 function calc_DAF_c!( c::DAF )
     #continuous
     if c.α_x == 0
-      c.α_x =  0.1c.x
+      c.α_x = 0.1c.x
     end
     if c.α_y == 0
-      c.α_y = c.α_x / 3
+      c.α_y = c.α_x / 3.0
     end
-  
-    dx = c.α_x * c.v_e
-    dy = c.α_x * c.v_e
-    r = √( (c.x^2) + ( (c.y^2) * ( dx / dy) ) )
-    daf_a = c.secondary_source_concentration / ( 4c.tera_e * √(π) * √( c.v_e * r ) * √(dy) )
-    daf_b = ℯ^( ( ( c.x - r ) * c.v_e ) / ( 2 * dx ) ) 
+    dx = c.α_x * c.darcy_velocity
+    dy = c.α_x * c.darcy_velocity
+    r = √( (c.x^2.0) + ( (c.y^2.0) * (dx / dy) ) )
+    daf_a = c.secondary_source_concentration / ( 4.0 * c.tera_e * √(π) * √(c.darcy_velocity * r) * √(dy) )
+    daf_b = ℯ^( ( (c.x - r) * c.darcy_velocity ) / (2.0dx) ) 
     c.DAF = daf_a * daf_b
-  
     return c.DAF
 end
 
-function calc_concentration!( d::DAF )
+
+function compute_concentration!( d::DAF )
     concentration = 0.0
     if d.x > 0
      #=
@@ -227,53 +218,38 @@ end
 
 
 """
-    compute_result!( dem::ArchGDAL.AbstractDataset, r0::Int64, c0::Int64, ri::Int64, ci::Int64, daf::DAF )
-
-Given the raster `dem` and the indexes (`r0`, `c0`) of the source, modify the postion values of object `daf` and return the concentration at indexes (`ri`, `ci`)
-"""
-function Functions.compute_result!( dem::ArchGDAL.AbstractDataset, r0::Int64, c0::Int64, ri::Int64, ci::Int64, daf::DAF )
-    daf.x, daf.y = Functions.compute_position(dem, r0, c0, ri, ci, daf.acquifer_flow_direction)
-    return calcDAF!(daf)
-end
-
-
-
-Functions.check_result(value::Float64) = value > 0.01
-
-
-
-"""
-    run_leaching( source_file::AbstractString, contaminants, concentrations::Vector{Float64}, aquifer_depth::Float64, acquifer_flow_direction::Int64, mean_rainfall::Float64, texture, resolution::Int64, time::Int64=1,
-                    orthogonal_extension::Float64=10000.0, soil_density::Float64=1.70, source_thickness::Float64=1.0, darcy_velocity::Float64=0.000025, mixed_zone_depth::Float64=1.0,
-                    decay_coeff::Float64=0.0, algorithm::Symbol=:fickian, option::Symbol=:continuous, output_path::AbstractString=".\\output_model_daf.tiff" )
+    run_leaching(; dem_file::String, source_file::String, contaminantCASNum::String, concentration::Float64, aquifer_depth::Float64, aquifer_flow_direction::Int64,
+                   mean_rainfall::Float64, texture::String, resolution::Int64, time::Int64=1, orthogonal_width::Float64=10000.0, soil_density::Float64=1.70,
+                   source_thickness::Float64=1.0, darcy_velocity::Float64=0.000025, mixed_zone_depth::Float64=1.0, decay_coeff::Float64=0.0, algorithm::Symbol=:fickian,
+                   option::Symbol=:continuous, output_path::String=".\\aquifer_output_model.tiff" )
 
 Run the simulation of leaching and dispersion of contaminants in an aquifer, returning a map of the possible worst case spreading of the contaminants.
 
 # Arguments
 - `dtm_file::String`: path to the raster of terrain.
 - `source_file::AbstractString`: path to the shapefile containing source point of the contaminants.
-- `contaminants`: type of substance.
-- `concentrations::Vector{Float64}`: concentration of the contaminants at the source.
+- `contaminantCASNum::String`: CAS number identifier of a substance.
+- `concentration::Float64`: concentration of the contaminants at the source.
 - `aquifer_depth::Float64`: depth of the aquifer in meters.
-- `acquifer_flow_direction::Int64`: angle of direction of the flow in degrees.
+- `aquifer_flow_direction::Int64`: direction of the water flow within the aquifer as an angle in degrees.
 - `mean_rainfall::Float64`: average rainfall volume.
-- `texture`: type of terrain at the source.
+- `texture::String`: type of terrain at the source.
 - `resolution::Int64`: dimension of a cell for the analysis.
 - `time::Int64=1`: starting time.
-- `orthogonal_extension::Float64=10000.0`: X
+- `orthogonal_width::Float64=10000.0`
 - `soil_density::Float64=1.70`: density of the terrain.
 - `source_thickness::Float64::Float64=1.0`: thickness of the terrain layer at the source.
-- `darcy_velocity::Float64=0.000025`: X
-- `mixed_zone_depth::Float64=1.0`: X
-- `decay_coeff::Float64=0.0`: X
+- `darcy_velocity::Float64=0.000025`
+- `mixed_zone_depth::Float64=1.0`
+- `decay_coeff::Float64=0.0`
 - `algorithm::Symbol=:fickian`: type of algorithm to be used.
 - `option::Symbol=:continuous`: second option to define the kind o algorithm to use.
-- `output_path::AbstractString=".\\output_model_daf.tiff": output file path. 
+- `output_path::String=".\\aquifer_output_model.tiff": output file path. 
 """
-function run_leaching(; dem_file::String, source_file::String, contaminant::String, concentration::Float64, aquifer_depth::Float64, acquifer_flow_direction::Int64,
-                    mean_rainfall::Float64, texture::String, resolution::Int64, time::Int64=1, orthogonal_extension::Float64=10000.0, soil_density::Float64=1.70,
-                    source_thickness::Float64=1.0, darcy_velocity::Float64=0.000025, mixed_zone_depth::Float64=1.0, decay_coeff::Float64=0.0, algorithm::Symbol=:fickian,
-                    option::Symbol=:continuous, output_path::String=".\\output_model_daf.tiff" )
+function run_leaching(; dem_file::String, source_file::String, contaminantCASNum::String, concentration::Float64, aquifer_depth::Float64, aquifer_flow_direction::Int64,
+                        mean_rainfall::Float64, texture::String, resolution::Int64, time::Int64=1, orthogonal_width::Float64=10000.0, soil_density::Float64=1.70,
+                        source_thickness::Float64=1.0, darcy_velocity::Float64=0.000025, mixed_zone_depth::Float64=1.0, decay_coeff::Float64=0.0,
+                        algorithm::Symbol=:fickian, option::Symbol=:continuous, output_path::String=".\\aquifer_output_model.tiff" )
 
     if algorithm ∉ [:fickian, :domenico]
         throw(DomainError(algorithm, "`algorithm` must either be `:fickian` or `:domenico`"))
@@ -308,22 +284,20 @@ function run_leaching(; dem_file::String, source_file::String, contaminant::Stri
         throw(DomainError("The reference systems are not uniform. Aborting analysis."))
     end
 
-    effective_infiltration *= (mean_rainfall / 10)^2
+    effective_infiltration *= (mean_rainfall / 10.0)^2.0
 
     x_source = agd.getx(geom, 0)
     y_source = agd.gety(geom, 0)
-    r_source, c_source = toIndexes(dtm, x_source, y_source)
+    r_source, c_source = Functions.toIndexes(dtm, x_source, y_source)
 
-    #                                      ief,                    ro,           dz,               lf,            ve,             dgw               sw
-    element = Leach(h, tera_w, tera_a, kd, effective_infiltration, soil_density, source_thickness, aquifer_depth, darcy_velocity, mixed_zone_depth, orthogonal_extension) 
+    element = Leach(h, tera_w, tera_a, kd, effective_infiltration, soil_density, source_thickness, aquifer_depth, darcy_velocity, mixed_zone_depth, orthogonal_width) 
     calc_kw!(element)
     calc_ldf!(element)
     calc_sam!(element)
     secondary_source_concentration = concentration * calc_LF!(element)
     
-    daf = DAF(secondary_source_concentration, x_source, y_source, 0, 0, decay_coeff, darcy_velocity, kd, soil_density, tera_e, orthogonal_extension, time, acquifer_flow_direction, algorithm, option)
-    # Fill points with the indexes of each point that will compose the result raster and values with the concentrations in the respective points 
-    points, values = Functions.expand!(r_source, c_source, concentration, dem, daf)
+    daf = DAF(secondary_source_concentration, x_source, y_source, 0.0, 0.0, decay_coeff, darcy_velocity, kd, soil_density, tera_e, orthogonal_width, time, aquifer_flow_direction, algorithm, option)
+    points = Functions.expand(r_source, c_source, contaminantCASNum, concentration, dem, daf)
 
     maxR = maximum( point -> point[1], points )
     minR = minimum( point -> point[1], points )
@@ -335,12 +309,12 @@ function run_leaching(; dem_file::String, source_file::String, contaminant::Stri
     noData = agd.getnodatavalue(agd.getband(dem, 1))
     data = fill(noData, maxR-minR+1, maxC-minC+1)
     for r in minR:maxR, c in minC:maxC
-        match = findfirst( p -> p == (r, c), points )
+        match = findfirst( p -> p[1] == r && p[2] == c, points )
         if !isnothing(match)
-            data[r-minR+1, c-minC+1] = values[match]
+            data[r-minR+1, c-minC+1] = points[match][3]
         end
     end
-    Functions.writeRaster(data, agd.getdriver("GTiff"), geotransform, refsys, noData, path)
+    Functions.writeRaster(data, agd.getdriver("GTiff"), geotransform, refsys, noData, output_path)
 end
 
 

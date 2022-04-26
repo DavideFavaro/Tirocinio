@@ -1,7 +1,5 @@
+"""Module containing functions for retrieving substances' data from a database."""
 module FunctionsDB
-"""
-Module containing functions for retrieving substances' data from a database.
-"""
 
 
 
@@ -14,17 +12,18 @@ using SQLite
 export substance_extract, texture_extract, air_extract, cn_extract, cn_list_extract
 
 
+
 const dbi = DBInterface
 const sql = SQLite
 
 
 
 """
-    substance_extract( substance_id::Int64, fields::Vector{String}, db_path::String = "..\\..\\..\\resources\\Analysis data\\substance.db" )
+    substance_extract( numCAS::String, fields::Vector{String}, db_path::String = "..\\..\\..\\resources\\Analysis data\\substance.db" )
 
-Extract values that describe a pollutant from the columns indicated by `fields` of the database at `db_path` where the id matches `substance_id`.
+Extract values that describe a pollutant from the columns indicated by `fields` of the database at `db_path` where the CAS number matches `numCAS`.
 """
-function substance_extract( substance_id::Int64, fields::Vector{String}, db_path::String="" )
+function substance_extract( numCAS::String, fields::Vector{String}, db_path::String="" )
     if  isempty(db_path)
         db_path = occursin("src", @__DIR__) ? split(@__DIR__, "src")[1] : *(@__DIR__, "\\..\\")
         db_path *= "resources\\Analysis data\\substance.db"
@@ -32,11 +31,12 @@ function substance_extract( substance_id::Int64, fields::Vector{String}, db_path
     # estrazione valori sostanze
     db = sql.DB(db_path)
     sql_fields = join(fields, ", ")
-    query_substance = sql.Stmt( db, "SELECT "*sql_fields*" FROM substance WHERE id = ?" )
-    results = dbi.execute(query_substance, [substance_id])
+    query_substance = sql.Stmt(db, "SELECT "*sql_fields*" FROM substance WHERE n_CAS LIKE ?")
+    results = dbi.execute(query_substance, [numCAS])
     resdf = DataFrame(results)
     return resdf
 end
+
 
 
 """
@@ -119,7 +119,24 @@ end
 end # module
 
 
-
+#=Tables
+"family":
+    Chemical family of substances, referenced by table "substance"
+"volatility":
+    Classes of volatility, referenced by table "substance"
+"substance":
+    Chemical substances, with various information on each
+"air_stability":
+    Stability classes, outdoor classes, various sigma values 
+"sqlite_sequence":
+    Not relevant
+"texture":
+    Kind of terrain textures, with informations on them like permeability and such
+"sqlite_stat1"
+    Not relevant
+"cn":
+    Related to runoff (cn -> runoff curve number), also has clc (-> CORINE Land Cover ?)
+=#
 #= CHECK A TABLE TO FIND THE VALUE TO BE USED FOR THE CONDITION
 db_path = occursin("src", @__DIR__) ? split(@__DIR__, "src")[1] : *(@__DIR__, "\\..\\")
 db_path *= "resources\\Analysis data\\substance.db"
@@ -127,4 +144,8 @@ db = sql.DB(db_path)
 query = sql.Stmt( db, "SELECT * FROM substance" )
 results = dbi.execute(query)
 resdf = DataFrame(results)
+
+query2 = sql.Stmt(db, "SELECT rfd_ing, rfd_inal, rfc FROM substance WHERE n_CAS LIKE ?")
+result2 = dbi.execute(query2, ["16065-83-1"])
+resdf2 = DataFrame(result2)
 =#

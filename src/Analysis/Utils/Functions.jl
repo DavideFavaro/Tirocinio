@@ -1,7 +1,5 @@
+"""Module containing auxiliary functions."""
 module Functions
-"""
-Module containing auxiliary functions.
-"""
 
 
 
@@ -10,6 +8,10 @@ using CombinedParsers
 using CombinedParsers.Regexp
 using DataFrames
 using Rasters
+
+
+
+include(".\\FunctionsDB.jl")
 
 
 
@@ -28,7 +30,19 @@ const agd = ArchGDAL
 """
     AbstractAnalysisObject
 
-Abstract supertype of the structs defined to reppresented a kind of analysis to be performed
+Abstract supertype of the structs defined to reppresented some kind of analysis to be performed.
+A struct defined as a subtype of `AbstractAnalysisObject` should have the following fields:
+- `x::Float64`: x coordinate of the current cell to be analyzed.
+- `y::Float64`: y coordinate of the current cell to be analyzed.
+- `direction::Int64`: Angular direction of flow (ie wind direction or water flow direction)
+It may, tho it is not strictly required, also have the following fields:
+- `z::Float64`: (Optional) z coordinate of the current cell to be analyzed.
+
+The module should also provide the following functions:
+- `compute_concentration!( object::YourStruct )`: where `YourStruct` is the struct subtyping `AbstractAnalysisObject`,
+    the function should return the concentration of pollutant in a single cell at the coordinates given by `x`, `y`
+    and possibly `z` fields.
+- `check_result( value )`:given the concentration value for a cell, returns true if said value is abnormal.
 """
 abstract type AbstractAnalysisObject end
 
@@ -145,28 +159,58 @@ end
 
 
 """
-    compute_position( dtm::ArchGDAL.AbstractDataset, r0::Int64, c0::Int64, ri::Int64, ci::Int64, direction::Int64 )
+    compute_position!( dem::ArchGDAL.AbstractDataset, r0::Int64, c0::Int64, ri::Int64, ci::Int64, object::AbstractAnalysisObject )
 
-Given the indexes of the source cell (`r0`, `c0`), those of the current one (`ri`, `ci`) and the angular direction of flow, compute the (`x`, `y`) coordinates
+Compute and set in `object` the coordinates of the cell with indexes (`ri`, `ci`) of raster `dem` given the source cell at indexes (`r0`, `c0`).
 """
-function compute_position( dtm::ArchGDAL.AbstractDataset, r0::Int64, c0::Int64, ri::Int64, ci::Int64, direction::Int64 )
-    Δx, Δy = toCoords(dtm, r0, c0) - toCoords(dtm, ri, ci)
-    dir = deg2rad(direction)
+function updatePosition!( dem::ArchGDAL.AbstractDataset, r0::Int64, c0::Int64, ri::Int64, ci::Int64, object::AbstractAnalysisObject )
+ # Distances on x and y of the i-th cell from the source
+    Δx, Δy = toCoords(dem, r0, c0) - toCoords(dem, ri, ci)
+ # Angular direction of flow in radians
+    dir = deg2rad(object.direction)
     sindir = sin(dir)
     cosdir = cos(dir)
-    return (Δx * cosdir) - (Δy * sindir), (Δx * sindir) + (Δy * cosdir)
+ # Set the `x` and `y` fields of `object`
+    object.x = (Δx * cosdir) - (Δy * sindir)
+    object.y = (Δx * sindir) + (Δy * cosdir)
+ # If there is a `z` field set that too with the value of the raster in the i-th cell 
+    if :z in fieldnames(typeof(object))
+        object.z = agd.getband(dem, 1)[ri, ci]
+    end
 end
 
 
 
-function compute_result!( dtm::ArchGDAL.AbstractDataset, r0::Int64, c0::Int64, ri::Int64, ci::Int64, object::AbstractAnalysisObject )
+
+function compute_concentration!( object::AbstractAnalysisObject )
     throw(DomainError(object, "No function definition for `$(typeof(object))`"))
 end
 
 
 
-function check_result( value )
-    throw(DomainError("Using unspecialized function"))
+"""
+    check_result( concentration::Float64, numCAS::String )
+
+Check if the substance identified by CAS number `numCAS` as a potentially harmful value of `concentration`. 
+"""
+function check_result( concentration::Float64, numCAS::String )
+    references = Array( FunctionsDB.substance_extract(numCAS, ["rfd_ing", "rfd_inal", "rfc"]) )
+    return any( x -> concentration > x, references )
+end
+
+
+
+"""
+    find_far_point( dem::ArchGDAL.AbstractDataset, src_r::Int64, src_c::Int64, object::AbstractAnalysisObject)
+
+Given an `AbstractAnalysisObject` use the values of speed and time memorized in it to find a distant cell reached by contaminants diffusing from cell (`src_r`, `src_c`).
+"""
+function find_far_point( dem::ArchGDAL.AbstractDataset, src_r::Int64, src_c::Int64, object::AbstractAnalysisObject)
+    θ = deg2rad(object.direction)
+    fields = fieldnames(typeof(object))
+    time = :time in fields ? object.time : 1.0
+    speed = :speed in fiels ? object.speed : 100.0
+    return @. (src_r, src_c) + round( Int64, ( speed * time * (cos(θ), sin(θ)) / getCellDims(dem) ) )
 end
 
 
@@ -186,15 +230,14 @@ the desired analysis, implementing `Functions.compute_result!`.\n
 Lastly, The module must also implement a version of the `condition` function to check that the concentration on a cell matches standard acceptable values for the
 specific analsis.
 """
-function expand( src_r::Int64, src_c::Int64, concentration::Float64, dem::ArchGDAL.AbstractDataset, object::AbstractAnalysisObject )
+function expand( src_r::Int64, src_c::Int64, numCAS::String, concentration::Float64, dem::ArchGDAL.AbstractDataset, object::AbstractAnalysisObject )
     max_r, max_c = size(agd.getband(dem, 1)) # Maximum indexes for rows and columns.
  # Check the input indexes are within the raster
     ( src_r  < 1 || src_r > max_r || src_c < 1 || src_c > max_c ) && throw(DomainError(points, "The first element of vector `points` must correspond to a cell inside raster `dem`"))
-    points = [ (src_r, src_c) ] # Vector of valid points
-    results = [concentration] # Vector of concentrations
     v = [1, 0, -1] # Vector of displacements
+    visited = [(src_r, src_c)] # Indexes of the cells that have already been checked.
+    points = [(src_r, src_c, concentration)] # Vector of valid points
     new_points = [( points[1][1]+i, points[1][2]+j ) for i in v, j in v if (i == 0) ⊻ (j == 0)] # Indexes of the cells that need to be checked, initially filled with the adjacents of the source.
-    visited = deepcopy(points) # Indexes of the cells that have already been checked.
  # While there are still points to verify.
     while !isempty(new_points)
      # Extract a point.
@@ -203,13 +246,14 @@ function expand( src_r::Int64, src_c::Int64, concentration::Float64, dem::ArchGD
         any(@. p < 1 || p > (max_r, max_c) ) && continue
      # Add the point to the list of already visited points.
         push!(visited, p)
-     # Obtain the concentration on the current cell.
-        result = compute_result!(dem, points[1]..., p..., object)
+     # Update the coordinates of the current cell to be avaluated.
+        updatePosition!(dem, points[1][1], points[1][2], p..., object)
+     # Obtain the concentration of the pollutant in the current cell.
+        result = compute_concentration!(object)
      # If the result is valid
-        if condition(result)
-         # Add the point to the valid points and its result to the valid results.
-            push!(points, p)
-            push!(results, result)
+        if check_result(result, numCAS)
+         # Add the point and its result to the valid points.
+            push!( points, (p..., result) )
          # For each adjacent cell to the current one, if it has not already been encountered, add it to the points to check.
             for i in v, j in v
                 if (i == 0) ⊻ (j == 0)
@@ -218,8 +262,16 @@ function expand( src_r::Int64, src_c::Int64, concentration::Float64, dem::ArchGD
                 end
             end
         end
+     # If there are no cells left to check
+        if isempty(new_points)
+         # Take a certain distance from the source, the distance of the point and its direction will depend on the conditions (ie wind's speed and direction).
+          # This if will only add one cycle of execution if the cell's concentration is not relevant that is because `find_far_point` returns always the same point
+          # and the point gets added to `visited` regardless of its concentration.
+            fp = find_far_point(dem, points[1][1], points[1][2], object)
+            fp ∉ visited && push!(new_points, fp)
+        end
     end
-    return point, results
+    return points
 end
 
 
