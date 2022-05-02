@@ -22,14 +22,14 @@ end
 # ╔═╡ 9b6db6b0-9a07-11ec-112e-5904bc97f187
 # Load the necessary modules
 begin
-	include(".\\Data Gathering\\GroundData.jl")
-	include(".\\Data Gathering\\SatelliteData.jl")
-	
-	include(".\\Analysis\\Aquifers.jl")
-	include(".\\Analysis\\Lakes.jl")
-	include(".\\Analysis\\Noises.jl")
-	include(".\\Analysis\\Plumes.jl")
-	include(".\\Analysis\\Sediments.jl")
+	include("..\\src\\Data Gathering\\GroundData.jl")
+	include("..\\src\\Data Gathering\\SatelliteData.jl")
+
+	include("..\\src\\Analysis\\Aquifers.jl")
+	include("..\\src\\Analysis\\Lakes.jl")
+	include("..\\src\\Analysis\\Noises.jl")
+	include("..\\src\\Analysis\\Plumes.jl")
+	include("..\\src\\Analysis\\Sediments.jl")
 end
 
 # ╔═╡ 1769fb6b-c6a6-4ab4-91eb-8a1f245b7d21
@@ -173,20 +173,22 @@ mixed_zone_depth: (Float64)
 decay_coeff: (Float64)
 	coefficiente di decadimento?
 =#
-aqf.run_leaching(
+Aquifers.run_leaching(
+	dem_file = dtm_file,
 	source_file = source_file,
-	contaminants = "Tetracloroetilene (PCE)",
-	concentrations = 100.0,
+	contaminantCASNum="108-88-3",
+	concentration = 100.0,
+	tollerance = 2,
 	aquifer_depth = 1000.0,
 	acquifer_flow_direction = 0,
 	mean_rainfall = 20.0,
 	texture = "sand",
 	resolution = 25,
 	time = 10,
-	orthogonal_extension = 10.0,
+	orthogonal_width = 10.0,
 	darcy_velocity = 0.000025,
 	mixed_zone_depth = 1580.0,
-	option = :domenico,
+	algorithm = :domenico,
 	output_path = "..\\resources\\Analysis data\\Analysis results\\test_aquifer.tiff")
 
 # ╔═╡ d8f5f781-6d0d-48e5-b7be-63c6c41fe94a
@@ -209,14 +211,15 @@ fickian_y: (Float64)
 λk: (Float64)
 	?
 =#
-lakes.run_lake(
+Lakes.run_lake(
 	dem_file = dtm_file,
 	source_file = source_file,
-	wind_direction = 0,
+	wind_direction = 180,
 	pollutant_mass = 2000.0,
-	flow_mean_speed = 0.03,
+	tollerance = 2,
+	mean_flow_speed = 0.03,
 	resolution = 25,
-	hours = 10,
+	hours = 10.0,
 	fickian_x = 4.0,
 	fickian_y = 3.0,
 	output_path = "..\\resources\\Analysis data\\Analysis results\\test_lake.tiff"
@@ -233,7 +236,7 @@ umidità relativa (credo come percentuale in decimale)
 intensità del suono
 frequenza del suono
 =#
-noises.run_noise(
+Noises.run_noise(
     dem_file = dtm_file,
     source_file = source_file,
     temperature_K = 293.15,
@@ -270,19 +273,21 @@ smoke_temperature: (Float64)
 temperature: (Float64)
 	temperatura dell'ambiente.
 =#
-plumes.run_plume(
+Plumes.run_plume(
 	dem_file = dtm_file,
 	source_file = source_file,
 	stability = "a",
 	outdoor = "c",
+	contaminantCASNum="75-01-4",
 	concentration = 10000.0,
+	tollerance=2,
 	resolution = 25,
-	wind_direction = 0,
-	wind_speed = 1.0,
+	wind_direction = 135,
+	wind_speed = 0.1,
 	stack_height = 80.0,
-	gas_speed = 0.1,
 	stack_diameter = 1.0,
-	gas_temperature = 180.0,
+	gas_speed = 0.1,
+	gas_temperature = 150.0,
 	temperature = 18.0,
 	output_path = "..\\resources\\Analysis test data\\Analysis results\\test_plumes.tiff"
 )

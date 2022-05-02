@@ -196,7 +196,7 @@ function calc_DAF_c!( c::DAF )
 end
 
 
-function compute_concentration!( d::DAF )
+function Functions.compute_concentration!( d::DAF )
     concentration = 0.0
     if d.x > 0
      #=
@@ -218,18 +218,22 @@ end
 
 
 """
-    run_leaching(; dem_file::String, source_file::String, contaminantCASNum::String, concentration::Float64, aquifer_depth::Float64, aquifer_flow_direction::Int64,
-                   mean_rainfall::Float64, texture::String, resolution::Int64, time::Int64=1, orthogonal_width::Float64=10000.0, soil_density::Float64=1.70,
-                   source_thickness::Float64=1.0, darcy_velocity::Float64=0.000025, mixed_zone_depth::Float64=1.0, decay_coeff::Float64=0.0, algorithm::Symbol=:fickian,
-                   option::Symbol=:continuous, output_path::String=".\\aquifer_output_model.tiff" )
+    run_leaching(; dem_file::String, source_file::String, area_file::String="", contaminantCASNum::String, concentration::Float64, tollerance::Int64=2, 
+                   aquifer_depth::Float64, aquifer_flow_direction::Int64, mean_rainfall::Float64, texture::String, resolution::Int64, time::Int64=1,
+                   orthogonal_width::Float64=10000.0, soil_density::Float64=1.70, source_thickness::Float64=1.0, darcy_velocity::Float64=0.000025,
+                   mixed_zone_depth::Float64=1.0, decay_coeff::Float64=0.0, algorithm::Symbol=:fickian, option::Symbol=:continuous,
+                   output_path::String=".\\aquifer_output_model.tiff" )
 
 Run the simulation of leaching and dispersion of contaminants in an aquifer, returning a map of the possible worst case spreading of the contaminants.
 
 # Arguments
 - `dtm_file::String`: path to the raster of terrain.
-- `source_file::AbstractString`: path to the shapefile containing source point of the contaminants.
+- `source_file::String`: path to the shapefile containing source point of the contaminants.
+- `area_file::String=""`: path to the shapefile containing the poligon delimiting the area for the analysis.
 - `contaminantCASNum::String`: CAS number identifier of a substance.
 - `concentration::Float64`: concentration of the contaminants at the source.
+- `tollerance::Int64=2`: value used to determine wether the concentration of pollutant in a cell is relevant.
+    Specifically, a concentration value is considered relevant if its value is within "tollerance" orders of magnitute from the concentration on other cells.
 - `aquifer_depth::Float64`: depth of the aquifer in meters.
 - `aquifer_flow_direction::Int64`: direction of the water flow within the aquifer as an angle in degrees.
 - `mean_rainfall::Float64`: average rainfall volume.
@@ -246,10 +250,11 @@ Run the simulation of leaching and dispersion of contaminants in an aquifer, ret
 - `option::Symbol=:continuous`: second option to define the kind o algorithm to use.
 - `output_path::String=".\\aquifer_output_model.tiff": output file path. 
 """
-function run_leaching(; dem_file::String, source_file::String, contaminantCASNum::String, concentration::Float64, aquifer_depth::Float64, aquifer_flow_direction::Int64,
-                        mean_rainfall::Float64, texture::String, resolution::Int64, time::Int64=1, orthogonal_width::Float64=10000.0, soil_density::Float64=1.70,
-                        source_thickness::Float64=1.0, darcy_velocity::Float64=0.000025, mixed_zone_depth::Float64=1.0, decay_coeff::Float64=0.0,
-                        algorithm::Symbol=:fickian, option::Symbol=:continuous, output_path::String=".\\aquifer_output_model.tiff" )
+function run_leaching(; dem_file::String, source_file::String, area_file::String="", contaminantCASNum::String, concentration::Float64, tollerance::Int64=2, 
+                        aquifer_depth::Float64, aquifer_flow_direction::Int64, mean_rainfall::Float64, texture::String, resolution::Int64, time::Int64=1,
+                        orthogonal_width::Float64=10000.0, soil_density::Float64=1.70, source_thickness::Float64=1.0, darcy_velocity::Float64=0.000025,
+                        mixed_zone_depth::Float64=1.0, decay_coeff::Float64=0.0, algorithm::Symbol=:fickian, option::Symbol=:continuous,
+                        output_path::String=".\\aquifer_output_model.tiff" )
 
     if algorithm ∉ [:fickian, :domenico]
         throw(DomainError(algorithm, "`algorithm` must either be `:fickian` or `:domenico`"))
@@ -259,36 +264,44 @@ function run_leaching(; dem_file::String, source_file::String, contaminantCASNum
         throw(DomainError(option, "`option` must either be `:continuous` or `:pulse`"))
     end
 
-    h, kd = Functions.substance_extract(contaminant, ["c_henry", "koc_kd"])[1, :]
+    h, kd = FunctionsDB.substance_extract(contaminantCASNum, ["c_henry", "koc_kd"])[1, :]
     
     if isempty(h) && isempty(kd)
-        throw(DomainError(contaminant, "Analysis error, check input parameters"))
+        throw(DomainError(contaminantCASNum, "Analysis error, check input parameters"))
     end
 
-    tera_a, tera_w, effective_infiltration, tera_e, grain = Functions.texture_extract(texture, ["tot_por", "c_water_avg", "effective_infiltration", "por_eff", "grain"])[1, :]
+    tera_a, tera_w, effective_infiltration, tera_e, grain = FunctionsDB.texture_extract(texture, ["tot_por", "c_water_avg", "ief", "por_eff", "grain"])[1, :]
     
-    if all(isempty.([tera_a, tera_w, effective_infiltration, tera_e, grain]))
+    if any(isempty.([tera_a, tera_w, effective_infiltration, tera_e, grain]))
         throw(DomainError(texture, "Analysis error, check input parameters"))
     end
 
-    geom = agd.getgeom(collect(agd.getlayer(agd.read(source_file), 0))[1])
+    src_geom = agd.getgeom(collect(agd.getlayer(agd.read(source_file), 0))[1])
 
-    if agd.geomdim(geom) != 0
+    if agd.geomdim(src_geom) != 0
         throw(DomainError(source, "`source` must be a point"))
     end
 
     dem = agd.read(dem_file)
     refsys = agd.getproj(dem)
 
-    if refsys != agd.toWKT(agd.getspatialref(geom))
-        throw(DomainError("The reference systems are not uniform. Aborting analysis."))
+    if refsys != agd.toWKT(agd.getspatialref(src_geom))
+        throw(DomainError("The reference systems are not uniform."))
+    end
+
+    if !isempty(area_file)
+        trg_geom = agd.getgeom(collect(agd.getlayer(agd.read(area_file), 0))[1])
+
+        agd.geomdim(trg_geom) != 2 && throw(DomainError(area_file, "`area` must be a polygon."))
+        agd.toWKT(agd.getspatialref(trg_geom)) != refsys && throw(DomainError("The reference systems are not uniform."))
+        !agd.contains(trg_geom, src_geom) && throw(DomainError(area_file, "`area` polygon must contain the source."))
     end
 
     effective_infiltration *= (mean_rainfall / 10.0)^2.0
 
-    x_source = agd.getx(geom, 0)
-    y_source = agd.gety(geom, 0)
-    r_source, c_source = Functions.toIndexes(dtm, x_source, y_source)
+    x_source = agd.getx(src_geom, 0)
+    y_source = agd.gety(src_geom, 0)
+    r_source, c_source = Functions.toIndexes(dem, x_source, y_source)
 
     element = Leach(h, tera_w, tera_a, kd, effective_infiltration, soil_density, source_thickness, aquifer_depth, darcy_velocity, mixed_zone_depth, orthogonal_width) 
     calc_kw!(element)
@@ -297,7 +310,8 @@ function run_leaching(; dem_file::String, source_file::String, contaminantCASNum
     secondary_source_concentration = concentration * calc_LF!(element)
     
     daf = DAF(secondary_source_concentration, x_source, y_source, 0.0, 0.0, decay_coeff, darcy_velocity, kd, soil_density, tera_e, orthogonal_width, time, aquifer_flow_direction, algorithm, option)
-    points = Functions.expand(r_source, c_source, contaminantCASNum, concentration, dem, daf)
+    points = !isempty(area_file) ? Functions.expand(r_source, c_source, concentration, tollerance, dem, trg_geom, daf) : 
+        Functions.expand(r_source, c_source, concentration, tollerance, dem, daf)
 
     maxR = maximum( point -> point[1], points )
     minR = minimum( point -> point[1], points )
@@ -306,12 +320,12 @@ function run_leaching(; dem_file::String, source_file::String, contaminantCASNum
 
     geotransform = agd.getgeotransform(dem)
     geotransform[[1, 4]] = Functions.toCoords(dem, minR, minC)
-    noData = agd.getnodatavalue(agd.getband(dem, 1))
+    noData = Float32(agd.getnodatavalue(agd.getband(dem, 1)))
     data = fill(noData, maxR-minR+1, maxC-minC+1)
     for r in minR:maxR, c in minC:maxC
         match = findfirst( p -> p[1] == r && p[2] == c, points )
         if !isnothing(match)
-            data[r-minR+1, c-minC+1] = points[match][3]
+            data[r - minR + 1, c - minC + 1] = points[match][3]
         end
     end
     Functions.writeRaster(data, agd.getdriver("GTiff"), geotransform, refsys, noData, output_path)

@@ -25,18 +25,18 @@ const agd = ArchGDAL
 mutable struct Plume <: Functions.AbstractAnalysisObject
   # Parameters
     concentration::Float64      # Pollutant concentration (m³/sec)
-    x::Float64                  # distance, x coordinate (m)
-    y::Float64                  # y coordinate (m)
-    z::Float64                  # z coordinate (m)
-    stability::String           # stability class
-    outdoor::String             # outdoor class
-    stack_height::Float64       # height of the stack source of the pollutants
-    stack_diameter::Float64     # diameter of the stack source of the pollutants
-    direction::Int64            # angle of direction of the wind (°)
-    wind_speed::Float64         # speed of the wind
-    gas_speed::Float64          # speed of the fumes
-    gas_temperature::Float64    # fumes temperature
-    temperature::Float64        # environment temperature
+    x::Float64                  # Distance, x coordinate (m)
+    y::Float64                  # Coordinate y (m)
+    z::Float64                  # Coordinate z (m)
+    stability::String           # Stability class
+    outdoor::String             # Outdoor class
+    stack_height::Float64       # Height of the stack source of the pollutants
+    stack_diameter::Float64     # Diameter of the stack source of the pollutants
+    direction::Int64            # Angle of direction of the wind (°)
+    wind_speed::Float64         # Speed of the wind
+    gas_speed::Float64          # Speed of the fumes
+    gas_temperature::Float64    # Fumes temperature
+    temperature::Float64        # Environment temperature
     max_domain::Float64
  # Computational results   
     H::Float64
@@ -81,7 +81,7 @@ function calc_C!( p::Plume )
 end
 
 
-function compute_concentration!( p::Plume )
+function Functions.compute_concentration!( p::Plume )
     if p.x > 0
         calc_σ!(p)
         calc_g!(p)
@@ -98,7 +98,7 @@ end
 
 
 """
-    run_plume(; dem_file::String, source_file::String, stability::String, outdoor::String, contaminantCASNum::String, concentration::Float64, resolution::Int64,
+    run_plume(; dem_file::String, source_file::String, stability::String, outdoor::String, concentration::Float64, tollerance::Int64=2, resolution::Int64,
                 wind_direction::Int64, wind_speed::Float64, stack_height::Float64, stack_diameter::Float64=0.0, gas_speed::Float64=0.0, gas_temperature::Float64=0.0,
                 temperature::Float64=0.0, output_path::AbstractString=".\\plume_otput_model.tiff" )
 
@@ -109,8 +109,9 @@ Create and save as `output_path` a raster containing the results of model of dis
 - `source_file::String`: path to the shapefile containing the source point of the plume.
 - `stability::String`: information on the weather.
 - `outdoor::String`: outdoor class.
-- `contaminantCASNum::String`: CAS number identifier of a substance.
 - `concentration::Float64`: concentration of contaminants at the source.
+- `tollerance::Int64=2`: value used to determine wether the concentration of pollutant in a cell is relevant.
+    Specifically, a concentration value is considered relevant if its value is within "tollerance" orders of magnitute from the concentration on other cells.
 - `resolution::Int64`: size of the cell in meters.
 - `wind_direction::Int64`: angle of direction of the wind in degrees.
 - `wind_speed::Float64`: average wind speed.
@@ -121,7 +122,7 @@ Create and save as `output_path` a raster containing the results of model of dis
 - `temperature::Float64=0.0`: average temperature of the environment.
 - `output_path::String=".\\plume_otput_model.tiff"`: output file path. 
 """
-function run_plume(; dem_file::String, source_file::String, stability::String, outdoor::String, contaminantCASNum::String, concentration::Float64, resolution::Int64,
+function run_plume(; dem_file::String, source_file::String, stability::String, outdoor::String, concentration::Float64, tollerance::Int64=2, resolution::Int64,
                      wind_direction::Int64, wind_speed::Float64, stack_height::Float64, stack_diameter::Float64=0.0, gas_speed::Float64=0.0, gas_temperature::Float64=0.0,
                      temperature::Float64=0.0, output_path::AbstractString=".\\plume_otput_model.tiff" )
 
@@ -142,10 +143,8 @@ function run_plume(; dem_file::String, source_file::String, stability::String, o
     x_source = agd.getx(geom, 0)
     y_source = agd.gety(geom, 0)
     r_source, c_source = Functions.toIndexes(dem, x_source, y_source)
-
-    # start_time = time.time()
-    plume = Plume(concentration, x_source, y_source, agd.getband(dem, 1)[r_source, c_source], stability, outdoor, wind_speed, stack_height, stack_diameter, gas_speed, gas_temperature, temperature, wind_direction, 0.0) 
-    points = Functions.expand(r_source, c_source, contaminantCASNum, concentration, dem, plume)
+    plume = Plume(concentration, x_source, y_source, agd.getband(dem, 1)[r_source, c_source], stability, outdoor, stack_height, stack_diameter, wind_direction, wind_speed, gas_speed, gas_temperature, temperature, 0.0)
+    points = Functions.expand(r_source, c_source, concentration, tollerance, dem, plume)
 
     maxR = maximum( point -> point[1], points )
     minR = minimum( point -> point[1], points )
@@ -153,15 +152,15 @@ function run_plume(; dem_file::String, source_file::String, stability::String, o
     minC = minimum( point -> point[2], points )
 
     geotransform[[1, 4]] = Functions.toCoords(dem, minR, minC)
-    noData = agd.getnodatavalue(agd.getband(dem, 1))
+    noData = Float32(agd.getnodatavalue(agd.getband(dem, 1)))
     data = fill(noData, maxR-minR+1, maxC-minC+1)
     if isnothing(data) || isempty(data)
         throw(ErrorException("Analysis failed"))
     end
-    for r in minR:maxR, c in minC:maxC
-        match = findfirst( p -> p[1] == r && p[1] == c, points )
+    @inbounds for r in minR:maxR, c in minC:maxC
+        match = findfirst( p -> p[1] == r && p[2] == c, points )
         if !isnothing(match)
-            data[r-minR+1, c-minC+1] = pointss[match][3]
+            data[r-minR+1, c-minC+1] = points[match][3]
         end
     end
     Functions.writeRaster(data, agd.getdriver("GTiff"), geotransform, refsys, noData, output_path)
