@@ -24,35 +24,35 @@ const agd = ArchGDAL
 
 mutable struct Plume <: Functions.AbstractAnalysisObject
   # Parameters
-    concentration::Float64      # Pollutant concentration (m³/sec)
-    x::Float64                  # Distance, x coordinate (m)
-    y::Float64                  # Coordinate y (m)
-    z::Float64                  # Coordinate z (m)
-    stability::String           # Stability class
+    concentration::Float64      # Rate of chemical emission (m³/sec)
+    x::Float64                  # Distance in wind direction, x coordinate (m)
+    y::Float64                  # Y coordinate of target point (m)
+    z::Float64                  # Height of target point, Z Coordinate (m)
+    stability::String           # Atmosphere Pasquill class stability
     outdoor::String             # Outdoor class
     stack_height::Float64       # Height of the stack source of the pollutants
     stack_diameter::Float64     # Diameter of the stack source of the pollutants
-    direction::Int64            # Angle of direction of the wind (°)
-    wind_speed::Float64         # Speed of the wind
-    gas_speed::Float64          # Speed of the fumes
-    gas_temperature::Float64    # Fumes temperature
-    temperature::Float64        # Environment temperature
-    max_domain::Float64
+    direction::Int64            # Main wind direction (°)
+    wind_speed::Float64         # Wind speed in the main direction
+    gas_velocity::Float64       # Gas velocity
+    gas_temperature::Float64    # Absolute gas temperature
+    temperature::Float64        # Absolute ambient air temperature
+    max_domain::Float64         # Maximum concentration found during analysis
  # Computational results   
-    H::Float64
-    σy::Float64
-    σz::Float64
-    g1::Float64
-    g2::Float64
+    H::Float64                  # Real source height
+    σy::Float64                 # Gaussian distribution horizontal standard deviation
+    σz::Float64                 # Gaussian distribution vertical standard deviation
+    g1::Float64                 # Gaussian horizontal distribution factor 
+    g2::Float64                 # Gaussian vertical distribution factor 
     
-    Plume(concentration,x,y,z,stability,outdoor,stack_height,stack_diameter,direction,wind_speed,gas_speed,gas_temperature,temperature,max_domain)=new(concentration,x,y,z,stability,outdoor,stack_height,stack_diameter,direction,wind_speed,gas_speed,gas_temperature,temperature,max_domain)
+    Plume(concentration,x,y,z,stability,outdoor,stack_height,stack_diameter,direction,wind_speed,gas_velocity,gas_temperature,temperature,max_domain)=new(concentration,x,y,z,stability,outdoor,stack_height,stack_diameter,direction,wind_speed,gas_velocity,gas_temperature,temperature,max_domain,0.0,0.0,0.0,0.0,0.0)
 end
 
 
 
 function calc_h!( p::Plume )
     try
-        fb = 9.81 * ( (p.stack_diameter * p.gas_speed) / 4.0 ) * ( ( p.gas_temperature / p.temperature ) / p.gas_temperature )
+        fb = 9.81 * ( (p.stack_diameter * p.gas_velocity) / 4.0 ) * ( ( p.gas_temperature / p.temperature ) / p.gas_temperature )
         Δh = 1.6 * fb^0.333333 * p.x^0.666667
         p.H = p.stack_height + Δh
     catch
@@ -99,7 +99,7 @@ end
 
 """
     run_plume(; dem_file::String, source_file::String, stability::String, outdoor::String, concentration::Float64, tollerance::Int64=2, resolution::Int64,
-                wind_direction::Int64, wind_speed::Float64, stack_height::Float64, stack_diameter::Float64=0.0, gas_speed::Float64=0.0, gas_temperature::Float64=0.0,
+                wind_direction::Int64, wind_speed::Float64, stack_height::Float64, stack_diameter::Float64=0.0, gas_velocity::Float64=0.0, gas_temperature::Float64=0.0,
                 temperature::Float64=0.0, output_path::AbstractString=".\\plume_otput_model.tiff" )
 
 Create and save as `output_path` a raster containing the results of model of dispersion of airborne pollutants.
@@ -107,24 +107,29 @@ Create and save as `output_path` a raster containing the results of model of dis
 # Arguments
 - `dem_file::String`: path to the raster containing the height of the terrain in each cell.
 - `source_file::String`: path to the shapefile containing the source point of the plume.
-- `stability::String`: information on the weather.
-- `outdoor::String`: outdoor class.
-- `concentration::Float64`: concentration of contaminants at the source.
+- `stability::String`: atmosphere Pasquill class stability.
+- `outdoor::String`: type of environment, either `\"c\"` (country) or `\"u\"` (urban).
+- `concentration::Float64`: rate of chemical emission.
 - `tollerance::Int64=2`: value used to determine wether the concentration of pollutant in a cell is relevant.
     Specifically, a concentration value is considered relevant if its value is within "tollerance" orders of magnitute from the concentration on other cells.
 - `resolution::Int64`: size of the cell in meters.
-- `wind_direction::Int64`: angle of direction of the wind in degrees.
-- `wind_speed::Float64`: average wind speed.
+- `wind_direction::Int64`: angle of main direction of the wind in degrees.
+- `wind_speed::Float64`: average wind speed in the main direction.
 - `stack_height::Float64 `: height of the stack, or height of the source of the plume.
 - `stack_diameter::Float64=0.0`: diameter of the stack emiting the plume.
-- `gas_speed::Float64=0.0`: movement speed of the gas.
-- `gas_temperature::Float64=0.0`: temperature of the fumes.
-- `temperature::Float64=0.0`: average temperature of the environment.
+- `gas_velocity::Float64=0.0`: gas velocity.
+- `gas_temperature::Float64=0.0`: absolute temperature of the gas.
+- `temperature::Float64=0.0`: absolute ambient air temperature.
 - `output_path::String=".\\plume_otput_model.tiff"`: output file path. 
 """
-function run_plume(; dem_file::String, source_file::String, stability::String, outdoor::String, concentration::Float64, tollerance::Int64=2, resolution::Int64,
-                     wind_direction::Int64, wind_speed::Float64, stack_height::Float64, stack_diameter::Float64=0.0, gas_speed::Float64=0.0, gas_temperature::Float64=0.0,
+function run_plume(; dem_file::String, source_file::String, stability::String, outdoor::String, concentration::Float64, tollerance::Int64=2, resolution::Float64,
+                     wind_direction::Int64, wind_speed::Float64, stack_height::Float64, stack_diameter::Float64=0.0, gas_velocity::Float64=0.0, gas_temperature::Float64=0.0,
                      temperature::Float64=0.0, output_path::AbstractString=".\\plume_otput_model.tiff" )
+
+
+    if outdoor ∉ ["c", "o"]
+        throw(DomainError(outdoor, "`outdoor` must either be `\"c\"` or `\"u\"`."))
+    end
 
     geom = agd.getgeom(collect(agd.getlayer(agd.read(source_file), 0))[1])
 
@@ -143,7 +148,7 @@ function run_plume(; dem_file::String, source_file::String, stability::String, o
     x_source = agd.getx(geom, 0)
     y_source = agd.gety(geom, 0)
     r_source, c_source = Functions.toIndexes(dem, x_source, y_source)
-    plume = Plume(concentration, x_source, y_source, agd.getband(dem, 1)[r_source, c_source], stability, outdoor, stack_height, stack_diameter, wind_direction, wind_speed, gas_speed, gas_temperature, temperature, 0.0)
+    plume = Plume(concentration, x_source, y_source, agd.getband(dem, 1)[r_source, c_source], stability, outdoor, stack_height, stack_diameter, wind_direction, wind_speed, gas_velocity, gas_temperature, temperature, 0.0)
     points = Functions.expand(r_source, c_source, concentration, tollerance, dem, plume)
 
     maxR = maximum( point -> point[1], points )
