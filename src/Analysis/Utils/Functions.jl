@@ -7,6 +7,7 @@ using ArchGDAL
 using CombinedParsers
 using CombinedParsers.Regexp
 using DataFrames
+using GeoArrays
 using Rasters
 
 
@@ -59,6 +60,9 @@ Base.setindex!( collection::Raster{T}, v, x::Float64, y::Float64, ) where {T} = 
 Base.convert(::Type{Int64}, n::AbstractFloat) = round(Int64, n)
 
 
+ArchGDAL.getgeotransform( raster::GeoArrays.GeoArray ) = [raster.f.translation[1], raster.f.linear[1, :]..., raster.f.translation[2], raster.f.linear[2, :]...]
+
+
 
 """
     writeRaster( data::Array{Float32}, driver::ArchGDAL.Driver, geotransform::Vector{Float64}, refsys::AbstractString, noDataValue::Real, output_path::AbstractString )
@@ -78,8 +82,6 @@ function writeRaster( data::Array{Float32}, driver::ArchGDAL.Driver, geotransfor
     end
     return nothing
 end
-
-
 
 # Additional functions
 

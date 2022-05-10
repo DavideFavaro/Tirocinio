@@ -467,7 +467,7 @@ end
 
 Run hill topogrphy propagation model for spectral sound levels.
 """
-function bakkernn( hills::AbstractArray{T, 1}, src_loc::AbstractArray{T, 1}, rec_loc::AbstractArray{T, 1}, src_flow_res::Float32, ber_flow_res::Float32, rec_flow_res::Float32, freq::Float64 ) where {T <: Tuple{Float64, Float32}}
+function bakkernn( hills::AbstractArray{T, 1}, src_loc::AbstractArray{T, 1}, rec_loc::AbstractArray{T, 1}, src_flow_res::Float32, ber_flow_res::Float32, rec_flow_res::Float32, freq::Float64 ) where {T <: Tuple{Float64, Float64}}
     # Delany-Bazley under source, berm and reciver
     dbs = delbaz.( freq, [ src_flow_res, ber_flow_res, rec_flow_res ] )
     waveno = 2.0 * π * freq / 340.0
@@ -665,10 +665,10 @@ function dal( first_second_dist::Float64, second_third_dist::Float64, src_h::Flo
     a = rh0 * rh1 / r1
     any = 2.0 - src_slope_α / π
     aalast = Ref{Float32}(0.0)
-    pl = diffraction( aalast, r1, a, f1-f0, -1.0, any, waveno ) +
-         ( diffraction( aalast, r1, a, f1+f0, -1.0, any, waveno ) * wedge_impedence1 ) +
-         ( diffraction( aalast, r1, a, f1+f0, 1.0, any, waveno ) * wedge_impedence2 ) +
-         ( diffraction( aalast, r1, a, f1-f0, 1.0, any, waveno ) * wedge_impedence1 * wedge_impedence2 )
+    pl = diffraction!( aalast, r1, a, f1-f0, -1.0, any, waveno ) +
+        ( diffraction!( aalast, r1, a, f1+f0, -1.0, any, waveno ) * wedge_impedence1 ) +
+        ( diffraction!( aalast, r1, a, f1+f0, 1.0, any, waveno ) * wedge_impedence2 ) +
+        ( diffraction!( aalast, r1, a, f1-f0, 1.0, any, waveno ) * wedge_impedence1 * wedge_impedence2 )
  #=
     pl = sum( diffraction!.(
                 Ref(aalast),
@@ -770,7 +770,7 @@ function oneCut( distances::AbstractArray{T1, 1}, heights::AbstractArray{T2, 1},
     res = minmax( profile[ points[2][1]+1:ntemp ], 0.0f0, rec_h )[1]
     points[3] = ( points[2][1] - 1 + res[1], res[2] )
 
-    hillxz = Float64[ profile[1] ]
+    hillxz = Tuple{Float64, Float64}[ profile[1] ]
     klocs = Int64[1]
     nmm = 1
     for i in 1:3
@@ -1189,20 +1189,13 @@ Create and save as `output_path` a raster containing the results of model of dis
 - `frequency::Float64`: frequency of the sound in hertz.
 """
 # function noise_level( dtm::GeoArrays.GeoArray{Float32}, x0::Float64, y0::Float64, relative_humidity::Float64, temperature_k::FLoat64, frequency::Int64, noData::Float32 )
-function run_noise(; dem_file::AbstractString, terrain_impedences_file::AbstractString, source_file::AbstractString, temperature_K::Float64, relative_humidity::Float64, intensity_dB::Float64, frequency::Float64 )
+function run_noise(; dem_file::AbstractString, terrain_impedences_file::String="", source_file::String, temperature_K::Float64, relative_humidity::Float64,
+                     intensity_dB::Float64, frequency::Float64, output_path::String=".\\noise_otput_model.tiff" )
  # Input rasters and source point
     noData = -9999.0f0
     dtm = replace( ga.read(dem_file), missing => noData )
-
- #=
-    impedences = replace( ga.read(terrain_impedences_file), missing => -9999.0f0 )
- =#
-    impedences = fill( 0.0f0, size(dtm) )
-
-
-
+    impedences = isempty(terrain_impedences_file) ? fill( 0.0f0, size(dtm) ) : replace( ga.read(terrain_impedences_file), missing => noData )
     src = sf.Table(source_file)
-
  # Coordinates of the source
     x0 = src.geometry[1].x
     y0 = src.geometry[1].y
@@ -1229,7 +1222,7 @@ function run_noise(; dem_file::AbstractString, terrain_impedences_file::Abstract
     # The index will be used to insert the profiles in the correct places
     i = 1
    # x axis
-    for int in StepRange{Int64, Int64}[ c0:-1:col_begin, c0:1:col_end ]
+    @inbounds for int in StepRange{Int64, Int64}[ c0:-1:col_begin, c0:1:col_end ]
         for c in int
             push!(heights_profiles[i], dtm[r0, c][1])
             push!(impedences_profiles[i], impedences[r0, c][1])
@@ -1238,7 +1231,7 @@ function run_noise(; dem_file::AbstractString, terrain_impedences_file::Abstract
         i += 1
     end
    # y axis
-    for int in StepRange{Int64, Int64}[ r0:-1:row_begin, r0:1:row_end ]
+    @inbounds for int in StepRange{Int64, Int64}[ r0:-1:row_begin, r0:1:row_end ]
         for r in int
             push!(heights_profiles[i], dtm[r, c0][1])
             push!(impedences_profiles[i], impedences[r, c0][1])
@@ -1247,7 +1240,7 @@ function run_noise(; dem_file::AbstractString, terrain_impedences_file::Abstract
         i += 1
     end
    # diagonals
-    for int in StepRange{Int64, Int64}[ 0:-1:-cell_num, 0:1:cell_num ]
+    @inbounds for int in StepRange{Int64, Int64}[ 0:-1:-cell_num, 0:1:cell_num ]
         for j in int
             push!(heights_profiles[i], dtm[r0 + j, c0 - j][1])
             push!(heights_profiles[i+2], dtm[r0 + j, c0 + j][1])
@@ -1265,14 +1258,6 @@ function run_noise(; dem_file::AbstractString, terrain_impedences_file::Abstract
     )
  # Matrix with the resulting intenisty levels on the area of interest
     intensity_matrix = Float32[ noData for i in 1:(row_end - row_begin + 1), j in 1:(col_end - col_begin + 1) ]
-
-
- #=
-    r, c = (0, 0)
-    dists = nothing
- =#
-
-
  # Compute and insert the values for the trivial profiles( x and y axes and diagonal profiles )
     @inbounds for (heights, impdcs, coords) in zip(heights_profiles, impedences_profiles, coords_profiles)
      # Vector holding the distances from the source to the current point
@@ -1282,7 +1267,7 @@ function run_noise(; dem_file::AbstractString, terrain_impedences_file::Abstract
          # Add distance of the current point from source to the distances vector
             push!( dists, distance((x0, y0), coords[j]) )
          # Current cell
-            r, c = ga.indices( dtm, Int64[ coords[j]... ] )
+            r, c = ga.indices(dtm, [coords[j]...])
          # If the cell should have a value
             if dtm[r, c] != noData
              # Attenuation due to terrain
@@ -1296,19 +1281,6 @@ function run_noise(; dem_file::AbstractString, terrain_impedences_file::Abstract
                         intensity_matrix[ ( (r, c) .- (row_begin, col_begin) .+ 1 )... ] = Float32(intensity)
                     end
                 end
-             #  intensity_matrix[ ( (r, c) .- (row_begin, col_begin) .+ 1 )... ] = ground_loss < 32.0 ? noData : Float32( intensity_dB - transmission_loss(dists[j]) - ground_loss )
-             #=
-             # Sound intensity on a cell along trivial profiles
-                intensity_matrix[ ( (r, c) .- (row_begin, col_begin) .+ 1 )... ] =
-                 # Initial sound intensity
-                    intensity_dB -
-                 # Loss of intensity due to propagation
-                    #   transmission_loss( dists[j] ) -
-                 # Loss of intensity due to the atmosphere
-                    #   atmospheric_absorption_loss( dists[j], heights[j], relative_humidity, temperature_K, frequency ) -
-                  # Loss of intenisty due to the terrain
-                    oneCut( view(dists, 1:j), view(heights, 1:j), view(impdcs, 1:j), h0, heights[j], 1, [frequency] )[end]
-             =#
             end
         end
     end
@@ -1324,7 +1296,7 @@ function run_noise(; dem_file::AbstractString, terrain_impedences_file::Abstract
              # Add to the distance vector as required at the j-th iteration 
                 push!( dists, distance((x0, y0), coords[j]) )
              # Current cell
-                r, c = ga.indices( dtm, Int64[ coords[j]... ] )
+                r, c = ga.indices(dtm, [coords[j]...])
              # If the cell should have a value
                 if dtm[r, c] != noData
                  # Attenuation due to terrain
@@ -1338,517 +1310,15 @@ function run_noise(; dem_file::AbstractString, terrain_impedences_file::Abstract
                             intensity_matrix[ ( (r, c) .- (row_begin, col_begin) .+ 1 )... ] = Float32(intensity)
                         end
                     end
-                 #  intensity_matrix[ ( (r, c) .- (row_begin, col_begin) .+ 1 )... ] = ground_loss < 32.0 ? noData : Float32( intensity_dB - transmission_loss(dists[j]) - ground_loss )
-                 #=
-                 # Sound intensity on the cell
-                    intensity_matrix[ ( (r, c) .- (row_begin, col_begin) .+ 1 )... ] =
-                     # Initial sound intensity
-                        intensity_dB -
-                     # Loss of intensity due to propagation
-                        #   transmission_loss( dists[j] ) -
-                     # Loss of intensity due to the atmosphere
-                        #   atmospheric_absorption_loss( dists[j], heights[j], relative_humidity, temperature_K, frequency ) -
-                     # Loss of intenisty due to the terrain
-                 =#  
                 end
             end
         end
     end
-    return intensity_matrix 
+    geotransform = agd.getgeotransform(dtm)
+    geotransform[[1, 4]] = Functions.toCoords(geotransform, row_begin, col_begin)
+    Functions.writeRaster(intensity_matrix, agd.getdriver("GTiff"), geotransform, dtm.crs.val, noData, output_path) 
 end
-
-
-
-
-
-
-
 
 
 
 end # module
-
-
-
-
-# ========================================================== TESTING =========================================================================================================
-#=
-# TESTING data
-
-intensity_dB = 110.0
-dB = intensity_dB - 32.0
-frequency = 400.0
-src = sf.Table(".\\resources\\Analysis data\\source_shapefile\\source.shp")
-x0 = src.geometry[1].x
-y0 = src.geometry[1].y
-dtm = replace( ga.read(".\\resources\\Analysis data\\DTM_32.tiff"), missing => -9999.0f0 )
-imp = fill(0.0f0, size(dtm))
-r0, c0 = ga.indices(dtm, [x0, y0])
-# Coordinate dei punti
-x1, y1 = ga.coords(dtm, [1, 1])
-xn, yn = ga.coords(dtm, size(dtm)[1:2])
-# Dimensioni in metri di una cella
-Δx, Δy = (xn-x1, y1-yn) ./ size(dtm)[1:2]
-dB = 110.0 - 32.0
-h0 = dtm[x0, y0][1]
-max_radius = ceil(10^(dB/20))
-cell_num = ceil( Int64, max_radius/Δx )
-row_begin = r0 - cell_num
-row_end = r0 + cell_num
-col_begin = c0 + cell_num
-col_end = c0 - cell_num
-
-
-# TEST EXECUTION ON SINGLE PROFILES
-
-rn, cn = rotate_point( row_end, c0, r0, c0, 167 )
-heights, impdcs, coords = DDA(dtm, imp, r0, c0, rn, cn)
-dists = map( p -> distance((x0, y0), p), coords )
-
-tlosses = [ transmission_loss(dists[j]) for j in 2:length(dists) ]
-aalosses = [ atmospheric_absorption_loss(dists[j], heights[j], 0.20, 293.15, frequency) for j in 2:length(dists) ]
-attens = [ max( 0.0, oneCut( view(dists, 1:j), view(heights, 1:j), view(impdcs, 1:j), h0, 1.75f0, 1, [frequency] )[end] for j in 2:length(dists) ]
-
-plot(tlosses)
-plot(aalosses)
-plot!(attens)
-
-plot( heights )
-plot!( intensity_dB .- tlosses )
-plot!( intensity_dB .- aalosses )
-plot!( intensity_dB .- attens )
-
-
-# TEST MATRIX GENERATION
-
-@code_warntype run_noise(".\\resources\\Analysis data\\DTM_32.tiff", "A", ".\\resources\\Analysis data\\source_shapefile\\source.shp", 293.15, 0.3, 110.0, 400.0 )
-mat = run_noise(
-    ".\\resources\\Analysis data\\DTM_32.tiff",
-    "A",
-    ".\\resources\\Analysis data\\source_shapefile\\source.shp",
-    293.15, 0.3, 110.0, 400.0
-)
-
-sort(unique(mat))
-min_val = minimum(mat)
-max_val = maximum(mat)
-cmat = replace( mat, -9999.0f0 => 0.0f0 )
-rows, cols = size(cmat)
-
-plot( 1:rows, 1:cols, cmat, st=:heatmap, line_z=cmat, color=:viridis )
-
-area = dtm.A[row_begin:row_end, col_begin:col_end]
-plot( 1:rows, 1:cols, area, st=:heatmap, line_z=area, color=:viridis )
-=#
-
-
-
-#=
-using BenchmarkTools
-
-frequency = 110
-dtm_file = split( @__DIR__ , "\\Porting\\")[1] * "\\Mappe\\DTM_32.tiff"
-#   dtm_file = split( @__DIR__ , "\\Porting\\")[1] * "\\Mappe\\DTM_wgs84.tiff"
-dtm = replace( ga.read(dtm_file), missing => -9999.0f0 )
-#   x0, y0 = (726454.9302346368, 5.025993899219433e6)
-#       x0, y0 = (11.930065824163105,45.425861311724816)
-x0, y0 = ga.coords(dtm, [4500, 5700])
-
-GC.gc()
-
-@code_warntype ground_loss(dtm, x0, y0, frequency)
-
-@time ground_loss(dtm, x0, y0, frequency)
-
-@btime ground_loss(dtm, x0, y0, frequency)
-
-mat = noise_level(dtm, x0, y0, 0.2, 293.15, frequency)
-
-cmat = map( x -> x = x == -9999.0f0 ? -30.0f0 : x, mat )
-cols, rows = size(cmat)
-# Risultato
-heatmap( 1:cols, 1:rows, cmat )
-# DTM della stessa area del risultato
-heatmap( 1:637, 1:637, dtm.A[ 4500-(637÷2):4500+(637÷2), 5700-(637÷2):5700+(637÷2), 1 ] )
-=#
-#=
-attenuations_points = []
-for point in endpoints
-    if point[2] == c0 || abs(point[1] - r0) == abs(point[2] - c0)
-        continue
-    end
-    for α in [0, 90, 180, 270]
-        rm, cm = rotate_point( point[1], point[2], r0, c0, α )
-        # Arrays of the heigths and the respective coordnates
-        heights, coords = DDA( dtm, r0, c0, rm, cm )
-        # Compute array of the distances of each point of the profile from the source
-        dists = map( p -> √( ( p[1] - x0 )^2 + ( p[2] - y0 )^2 ), coords )
-        # Array of the resulting attenuations for each point of a single profile
-        atten_point = []
-        for j in 2:length(heights)
-            atten = onCut(dists[1:j], heights[1:j], zeros(length(heights[1:j])), h0, heights[j], 1, [dB] )
-            x, y = ga.indices( dtm, [ coords[j]... ] ) .- [ row_begin, col_begin ] 
-            push!( atten_point, ( [x, y], [coords[j]...], atten ) )
-        end
-        push!( attenuations_points, atten_point )
-    end
-end
-
-mat = Array{Any}( missing, row_end - row_begin, col_end - col_begin )
-for ( profile, results ) in zip( coords_profiles, attenuations )
-    for (coords, atten) in zip(profile, results)
-        row, col = Int64.( ga.indices(dtm, [coords...]) .- [row_begin, col_begin] )
-        if ismissing(mat[row, col]) || mat[row, col][3]  < atten[1]
-            mat[row, col] = ( coords[1], coords[2], atten[1] )
-        end
-    end
-end
-
-# DA SISTEMARE
-mat = Array{Any}( missing, row_end - row_begin, col_end - col_begin )
-for points in attenuations_points
-    for point in points
-        if ismissing(mat[point[1]...])
-            mat[point[1]...] = ( point[1][1], point[1][2], point[3][1] )
-        else
-            if mat[point[1]...][3] != point[3][1]
-                #   println("Attennuazione diversa per lo stesso punto")
-                #   println("$(mat[point[1]...]) e $point\n")
-                if point[3][1] > mat[point[1]...][3]
-                    mat[point[1]...] = ( point[1][1], point[1][2], point[3][1] )
-                end
-            end
-        end
-    end
-end
-
-plot( mat[1,2], seriestype=:scatter )
-for point in mat
-    if !ismissing(point)
-        plot!(point, seriestype=:scatter)
-    end
-end
-current()
-=#
-
-#=
-noData = -9999.f0
-mat = fill( noData, row_end - row_begin, col_end - col_begin )
-for point in endpoints
-    for α in [0, 90, 180, 270]
-        rm, cm = rotate_point( point[1], point[2], r0, c0, α )
-        # Arrays of the heigths and the respective coordnates
-        heights, coords = DDA( dtm, r0, c0, rm, cm )
-        # Compute array of the distances of each point of the profile from the source
-        dists = map( p -> √( ( p[1] - x0 )^2 + ( p[2] - y0 )^2 ), coords )
-        # Array of the resulting attenuations for each point of a single profile
-        for j in 2:length(heights)
-            atten = onCut(dists[1:j], heights[1:j], zeros(length(heights[1:j])), h0, heights[j], 1, [dB] )[end]
-            r, c = ga.indices( dtm, [ coords[j]... ] ) .- [ row_begin, col_begin ]
-            if mat[r, c] == noData || atten > mat[r, c]
-                mat[r, c] = atten
-            end
-        end
-    end
-end
-
-cmat = map( x -> x = x == noData ? 0.0f0 : x, mat )
-cols, rows = size(cmat)
-heatmap( 1:cols, 1:rows, cmat, c=cgrad([:blue, :white, :yellow, :red]) )
-
-
-
-cols, rows = size(dtm)
-heatmap( 1:cols, 1:rows, mat, c=cgrad([:blue, :white, :yellow, :red]) )
-=#
-
-#=
-    #   x0, y0 = (710705.0, 5065493.0)
-    x0, y0 = (726454.9302346368, 5.025993899219433e6)
-    #   x0, y0 = (11.930065824163105,45.425861311724816)
-    dtm_file = split( @__DIR__ , "\\Porting\\")[1] * "\\Mappe\\DTM_32.tiff"
-    #   dtm_file = split( @__DIR__ , "\\Porting\\")[1] * "\\Mappe\\DTM_wgs84.tiff"
-    dtm = Raster(dtm_file)
-    # Coordinate dei punti
-    x1, y1 = Functions.toCoords(dtm, 1, 1)
-    xn, yn = Functions.toCoords( dtm, size(dtm)[1:2]... )
-    # Dimensioni in metri di una cella
-    Δx, Δy = (xn-x1, yn-y1) ./ size(dtm)[1:2]
-    dB = 110 - 32
-    h0 = dtm[x0, y0]
-    max_radius = ceil(10^(dB/20))
-    cell_num = ceil( Int64, max_radius/Δx )
-    row_begin = x0 - max_radius
-    row_end = x0 + max_radius
-    col_begin = y0 + max_radius
-    col_end = y0 - max_radius
-
-    # Trivial profiles
-    # Profile containing the heights
-    heights_profiles = [
-        dtm[ x0, y0:-Δy:col_begin ], # y axis first half
-        dtm[ x0, y0:Δy:col_end ], # y axis second half
-        dtm[ x0:-Δx:row_begin, y0 ], # x axis first half
-        dtm[ x0:Δx:row_end, c0 ], # x axis second half
-        [ dtm[x0 + (i * Δx), y0 - (i * Δy)] for i in 0:-1:-cell_num ], # first diagonal first half
-        [ dtm[x0 + (i * Δx), y0 - (i * Δy)] for i in 0:cell_num ], # first diagonal second half
-        [ dtm[x0 + (i * Δx), y0 + (i * Δy)] for i in 0:-1:-cell_num ], # second diagonal first half
-        [ dtm[x0 + (i * Δx), y0 + (i * Δy)] for i in 0:cell_num ]  # second diagonal second half
-    ]
-    # Profile containing the positions
-    coords_profiles = [
-        # x and y axes
-        [ Functions.toCoords(dtm, x0, col) for col in c0:-1:col_begin ],
-        [ Functions.toCoords(dtm, x0, col) for col in c0:col_end ],
-        [ Functions.toCoords(dtm, row, y0) for row in r0:-1:row_begin ],
-        [ Functions.toCoords(dtm, row, y0) for row in r0:row_end ],
-        # diagonals
-        [ Functions.toCoords(dtm, x0 + (i * Δx), y0 - (i * Δy)) for i in 0:-1:-cell_num ],
-        [ Functions.toCoords(dtm, x0 + (i * Δx), y0 - (i * Δy)) for i in 0:cell_num ],
-        [ Functions.toCoords(dtm, x0 + (i * Δx), y0 + (i * Δy)) for i in 0:-1:-cell_num ],
-        [ Functions.toCoords(dtm, x0 + (i * Δx), y0 + (i * Δy)) for i in 0:cell_num ]
-    ]
-
-    top_idxs = [ (row_begin, col) for col in  y0+Δy:Δy:col_end-Δy ]
-    right_idxs = [ (row, col_end) for row in  row_begin+Δx:Δx:x0 ]
-    # Vector containing the indexes of the points on first quadrant of the border of the area of interest
-    endpoints = vcat( top_idxs, right_idxs )
-
-
-
-    #=
-    attenuations_points = []
-    for point in endpoints
-        if point[2] == c0 || abs(point[1] - r0) == abs(point[2] - c0)
-            continue
-        end
-        for α in [0, 90, 180, 270]
-            rm, cm = rotate_point( point[1], point[2], r0, c0, α )
-            # Arrays of the heigths and the respective coordnates
-            heights, coords = DDA( dtm, r0, c0, rm, cm )
-            # Compute array of the distances of each point of the profile from the source
-            dists = map( p -> √( ( p[1] - x0 )^2 + ( p[2] - y0 )^2 ), coords )
-            # Array of the resulting attenuations for each point of a single profile
-            atten_point = []
-            for j in 2:length(heights)
-                atten = onCut(dists[1:j], heights[1:j], zeros(length(heights[1:j])), h0, heights[j], 1, [dB] )
-                x, y = ga.indices( dtm, [ coords[j]... ] ) .- [ row_begin, col_begin ] 
-                push!( atten_point, ( [x, y], [coords[j]...], atten ) )
-            end
-            push!( attenuations_points, atten_point )
-        end
-    end
-
-    mat = Array{Any}( missing, row_end - row_begin, col_end - col_begin )
-    for ( profile, results ) in zip( coords_profiles, attenuations )
-        for (coords, atten) in zip(profile, results)
-            row, col = Int64.( ga.indices(dtm, [coords...]) .- [row_begin, col_begin] )
-            if ismissing(mat[row, col]) || mat[row, col][3]  < atten[1]
-                mat[row, col] = ( coords[1], coords[2], atten[1] )
-            end
-        end
-    end
-
-
-    # DA SISTEMARE
-    mat = Array{Any}( missing, row_end - row_begin, col_end - col_begin )
-    for points in attenuations_points
-        for point in points
-            if ismissing(mat[point[1]...])
-                mat[point[1]...] = ( point[1][1], point[1][2], point[3][1] )
-            else
-                if mat[point[1]...][3] != point[3][1]
-                    #   println("Attennuazione diversa per lo stesso punto")
-                    #   println("$(mat[point[1]...]) e $point\n")
-                    if point[3][1] > mat[point[1]...][3]
-                        mat[point[1]...] = ( point[1][1], point[1][2], point[3][1] )
-                    end
-                end
-            end
-        end
-    end
-
-    plot( mat[1,2], seriestype=:scatter )
-    for point in mat
-        if !ismissing(point)
-            plot!(point, seriestype=:scatter)
-        end
-    end
-    current()
-    =#
-
-
-
-    xm, ym = endpoints[273]
-    res_h, res_c = DDA(dtm, x0, y0, xm, ym, Δx, Δy)
-
-    plot([(x0, y0), (xm, ym)])
-    plot!(res_c)
-
-    noData = -9999.f0
-    mat = fill( noData, round(Int64, (row_end - row_begin) / Δx), round(Int64, (col_end - col_begin) / Δy) )
-    for point in endpoints
-        for α in [0, 90, 180, 270]
-            rm, cm = rotate_point( point[1], point[2], r0, c0, α )
-            # Arrays of the heigths and the respective coordnates
-            heights, coords = DDA( dtm, r0, c0, rm, cm )
-            # Compute array of the distances of each point of the profile from the source
-            dists = map( p -> √( ( p[1] - x0 )^2 + ( p[2] - y0 )^2 ), coords )
-            # Array of the resulting attenuations for each point of a single profile
-            for j in 2:length(heights)
-                atten = onCut(dists[1:j], heights[1:j], zeros(length(heights[1:j])), h0, heights[j], 1, [dB] )[end]
-                r, c = ga.indices( dtm, [ coords[j]... ] ) .- [ row_begin, col_begin ]
-                if mat[r, c] == noData || atten > mat[r, c]
-                    mat[r, c] = atten
-                end
-            end
-        end
-    end
-
-    #   cmat = deepcopy(mat)
-    cmat = map( x -> x = x == noData ? 0.0 : x, mat )
-    cols, rows = size(cmat)
-    heatmap( 1:cols, 1:rows, cmat, c=cgrad([:blue, :white, :yellow, :red]) )
-
-
-
-    cols, rows = size(dtm)
-    heatmap( 1:cols, 1:rows, mat, c=cgrad([:blue, :white, :yellow, :red]) )
-=#
-
-#= COSE CON GEODATA
-    using GeoData
-
-    #   dtm_file = *( @__DIR__, "\\Mappe\\DTM_wgs84.tiff" )
-    dtm_file = *( @__DIR__, "\\Mappe\\DTM_32.tiff" )
-    dtm = GeoArray(dtm_file)
-    plot(dtm)
-    #   # Altezza di x, y:
-     #   dtm[x, y]
-     #   # Coordinate:
-     #    # X (minima e massima)
-     #   dtm.dims[1][1]
-     #   dtm.dims[1][end]
-     #   length(dtm.dims[1])
-     #    # Y (massima e minima)
-     #   dtm.dims[2][1]
-     #   dtm.dims[2][end]
-    #   length(dtm.dims[2])
-
-    Δs = ( dtm.dims[1][end], dtm.dims[2][1] )
-    Δs -= ( dtm.dims[1][1], dtm.dims[2][end] )
-    Δs /= Float64.(size(dtm)[1:2])
-    dB = 110 - 32
-    max_radius = ceil(10^(dB/20))
-=#
-
-#=  CREAZIONE GRIGLIA
-    function create_grid( xs::Real, ys::Real, dB::Real )
-        # maximum ideal radius for the diffusion of a sound with given intensity  
-        max_radius = ceil(10^(dB/20))
-        # Coordinates of the first point (upper left) of the grid containing the radius 
-        x0 = xs - max_radius 
-        y0 = ys + max_radius
-
-        grid = CartesianGrid( (x0, ys-max_radius), (xs+max_radius, y0), (200.0,200.0) )  
-
-    #=
-        # LE COORDINATE DELL'AREA NON SONO VALIDE PERCHE' NON SONO ADEGUATAMENTE SCALATE
-        reg = RectRegion( "NEW", "VNT", "Area Of Interest", [ x0, ys-max_radius, xs+max_radius, y0 ] )
-
-        return grid, reg
-    =#
-        return grid
-    end
-
-    g = create_grid( 22., 22., 56. )
-    plot(g)
-    centers = centroid.(g)
-    plot!(centers)
-
-    size = round(Int64, √length(centers))
-    start = size * floor(Int64, size/2) + 1
-    x_axis = centers[ start:start+size-1 ]
-    plot!(x_axis, c=:blue )
-
-    start = ceil(Int64, size/2)
-    y_axis = centers[[ start + size*i for i in 0:size-1 ]]
-    plot!(y_axis, c=:red )
-
-    diagonal1 = centers[[ size + (size-1)i for i in 0:size-1 ]]
-    plot!(diagonal1, c=:yellow)
-
-    diagonal2 = centers[[ 1 + (size+1)i for i in 0:size-1 ]]
-    plot!(diagonal2, c=:purple)
-
-    is = collect(x0:size)
-    x0 = y0 = Int64(round(size/2))
-    r = floor(Int64, size/2)
-    radius_y(x) = Int64( round( √( r^2 - (x-x0)^2 ) + y0 ) )
-    idxs = ( radius_y.(is) .- 1 )
-    half_circle = centers[idxs]
-    plot!( half_circle, c=:orange )
-=#
-
-#=  PLOTTING DI DTM E ALTRO
-    using ArchGDAL
-    using GeoStats
-    using GeoRegions
-    using Plots
-    using Shapefile
-
-    #   geo = GeoRegion("GLB")  # Rappresenta il mondo
-    #   bound_lon, bound_lat = coordGeoRegion(geo)  # Ottieni i vettori di latitudine e longitudine se `geo` e poligonale ritorna anche i vettori di lat e lon per la forma
-    #   ref = ( max(bound_lon...) + min(bound_lon...) ) / 2
-    #   ginfo = RegionGrid(geo, bound_lon, bound_lat )
-    #   plot!( bound_lon.-ref, bound_lat )
-
-    # Shapefile
-    coast_file = *( @__DIR__, "\\Mappe\\ne_10m_coastline\\ne_10m_coastline.shp" )
-    shp_tb = Shapefile.Table(coast_file)
-    shp = Shapefile.shapes(shp_tb)
-    plot!(shp)
-
-    # Shapefile Veneto
-    veneto_shp = *( @__DIR__, "\\Mappe\\c0104011_Comuni\\c0104011_Comuni.shp")
-    shp_tb2 = Shapefile.Table(veneto_shp)
-    shp2 = Shapefile.shapes(shp_tb2)
-    plot!(shp2)
-
-    # Poligono veneto
-    veneto = try
-                GeoRegion("VNT")
-             catch
-                # [ 9.5 47.0, 14.0 47.0, 14.0 44.0, 9.5 44.0, 9.5 47.0 ]
-                RectRegion( "VNT", "GLB", "Veneto", [ 47.0, 44.0, 14.0, 9.5 ] )
-             end
-    blon, blat = coordGeoRegion(veneto)
-    plot!( blon, blat )
-
-
-    # LA GRIGLIA E' FUORI SCALA RISPETTO A TUTTO IL RESTO
-    geo_grid, aoi = create_Grid( 22., 22., 56. )
-    plot!( geo_grid )
-
-
-
-    plot!( [ 22.0, 22.0 ] )
-
-
-
-
-    # Tiff file 
-    dtm_file = *( @__DIR__, "\\Mappe\\DTM_32.tif" )
-    map_file = *( @__DIR__, "\\Mappe\\ne_10m_coastline" )
-    map_v_file = *( @__DIR__, "\\Mappe\\c0104011_Comuni" )
-
-    dtm = ArchGDAL.read(dtm_file)
-    map = ArchGDAL.read(map_file)
-    map_v = ArchGDAL.read(map_v_file)
-
-    band = ArchGDAL.getband( dtm, 1 )
-    ArchGDAL.imread(band)
-    ArchGDAL.imread(map)
-    ArchGDAL.imread(map_v)
-    plot(map)
-=#
