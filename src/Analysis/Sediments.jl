@@ -103,35 +103,43 @@ function run_sediment(; dem_file::String, source_file::String, resolution::Float
 
  # messaggio+='ALGORITMO UTILIZZATO: Shao (Shao, Dongdong, et al. "Modeling dredging-induced turbidity plumes in the far field under oscillatory tidal currents." Journal of Waterway, Port, Coastal, and Ocean Engineering 143.3 (2016))\n\n'
 
-    geom = agd.getgeom(collect(agd.getlayer(agd.read(source_file), 0))[1])
 
-    if agd.geomdim(geom) != 0
+    # Read source shapefile and get its geometry.
+    src_geom = agd.getgeom(collect(agd.getlayer(agd.read(source_file), 0))[1])
+    # Check that the geometry is a point.
+    if agd.geomdim(src_geom) != 0
         throw(DomainError(source, "`source` must be a point."))
     end
 
+    # Read the raster and obtain its projection.
     dem = agd.read(dem_file)
     refsys = agd.getproj(dem)
-    geotransform = agd.getgeotransform(dem)
-
-    if refsys != agd.toWKT(agd.getspatialref(geom))
+    # Check that the projection is the same as the coordinate reference system of the source shapefile.
+    if refsys != agd.toWKT(agd.getspatialref(src_geom))
         throw(DomainError("The reference systems are not uniform. Aborting analysis."))
     end
     
-    x_source = agd.getx(geom, 0)
-    y_source = agd.gety(geom, 0)
+    # Find the location of the source in the raster (as raster indexes).
+    x_source = agd.getx(src_geom, 0)
+    y_source = agd.gety(src_geom, 0)
     r_source, c_source = Functions.toIndexes(dem, x_source, y_source)
     
-    #   start_time = time.time()
-
-    sediment = Sediment(dredged_mass, time, mean_depth, x_dispersion_coeff, y_dispersion_coeff, 0.0, 0.0, mean_flow_speed,
-                        flow_direction, mean_sedimentation_velocity, time_intreval, current_oscillatory_amplitude, tide)
+    # Create an instance of the object used to aid in the analysis process.
+    sediment = Sediment( dredged_mass, time, mean_depth, x_dispersion_coeff, y_dispersion_coeff, 0.0, 0.0, mean_flow_speed,
+                         (540 - flow_direction) % 360, mean_sedimentation_velocity, time_intreval, current_oscillatory_amplitude, tide)
+    # Run the function that executes the analysis.
+     # The function returns a vector of triples rppresenting the relevant cells and their corresponding values.
     points = Functions.expand(r_source, c_source, dredged_mass, tollerance, dem, sediment)
-
+    # Find the bounding box of the list of cells returned by `expand`, it will be used to create the final raster.
+     # This allows to create a new raster smaller than the original (it is very unlikely for the cells of the original raster to be all valid
+     # and it wolud be a waste of time and memory to create a resulting raster any bigger than strictly necessary).
     minR = minimum( point -> point[1], points )
     minC = minimum( point -> point[2], points )
     maxR = maximum( point -> point[1], points )
     maxC = maximum( point -> point[2], points )
 
+    # Define various attributes of the raster, including the matrix holding the relevant cells' values, its reference system and others.
+    geotransform = agd.getgeotransform(dem)
     geotransform[[1, 4]] = Functions.toCoords(dem, minR, minC)
     noData = Float32(agd.getnodatavalue(agd.getband(dem, 1)))
     data = fill(noData, maxR-minR+1, maxC-minC+1)
@@ -141,6 +149,7 @@ function run_sediment(; dem_file::String, source_file::String, resolution::Float
             data[r-minR+1, c-minC+1] = points[match][3]
         end
     end
+    # Create the raster in memory.
     Functions.writeRaster(data, agd.getdriver("GTiff"), geotransform, refsys, noData, output_path)
 end
 

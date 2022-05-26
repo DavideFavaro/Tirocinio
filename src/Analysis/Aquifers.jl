@@ -264,31 +264,38 @@ function run_leaching(; dem_file::String, source_file::String, area_file::String
         throw(DomainError(option, "`option` must either be `:continuous` or `:pulse`"))
     end
 
+    # Read values concerning the substance that will be used in the analysis, from the database.
     henry_const, soil_adsorption = FunctionsDB.substance_extract(contaminantCASNum, ["c_henry", "koc_kd"])[1, :]
-    
+    # Check for actual results.
     if isempty(henry_const) && isempty(soil_adsorption)
         throw(DomainError(contaminantCASNum, "Analysis error, check input parameters"))
     end
 
+    # Read values concerning the texture of the terrain that will be used in the analysis, from the database.
     volumetric_air_content, volumetric_water_content, effective_infiltration, tera_e, grain = FunctionsDB.texture_extract(texture, ["tot_por", "c_water_avg", "ief", "por_eff", "grain"])[1, :]
-    
+    # Check for actual results.
     if any(isempty.([volumetric_air_content, volumetric_water_content, effective_infiltration, tera_e, grain]))
         throw(DomainError(texture, "Analysis error, check input parameters"))
     end
 
+    # Read source shapefile and get its geometry.
+     # Reading spatial data is costly, thus, reading it after the most basic check allows to save time in case those fail.
     src_geom = agd.getgeom(collect(agd.getlayer(agd.read(source_file), 0))[1])
-
+    # Check that the geometry is a point.
     if agd.geomdim(src_geom) != 0
         throw(DomainError(source, "`source` must be a point"))
     end
 
+    # Read the raster and obtain its projection.
+     # The reason for the position of the read is the same as the source shapefile.
     dem = agd.read(dem_file)
     refsys = agd.getproj(dem)
-
+    # Check that the projection is the same as the coordinate reference system of the source shapefile.
     if refsys != agd.toWKT(agd.getspatialref(src_geom))
         throw(DomainError("The reference systems are not uniform."))
     end
 
+    # Check if the path of the shapefile for the target area is given and, in case, if the shapefile is valid.
     if !isempty(area_file)
         trg_geom = agd.getgeom(collect(agd.getlayer(agd.read(area_file), 0))[1])
 
@@ -299,25 +306,37 @@ function run_leaching(; dem_file::String, source_file::String, area_file::String
 
     effective_infiltration *= (mean_rainfall / 10.0)^2.0
 
+    # Find the location of the source in the raster (as raster indexes).
     x_source = agd.getx(src_geom, 0)
     y_source = agd.gety(src_geom, 0)
     r_source, c_source = Functions.toIndexes(dem, x_source, y_source)
 
-    element = Leach(henry_const, volumetric_water_content, volumetric_air_content, soil_adsorption, effective_infiltration, soil_density, source_thickness, aquifer_depth, darcy_velocity, mixing_zone_depth, orthogonal_width) 
+    # Create an instance of the first object used to aid in the analysis process.
+    # Its main use is to gather values and the physical computations in one place.
+    element = Leach( henry_const, volumetric_water_content, volumetric_air_content, soil_adsorption, effective_infiltration, soil_density, source_thickness, aquifer_depth,
+                     darcy_velocity, mixing_zone_depth, orthogonal_width ) 
     calc_kw!(element)
     calc_ldf!(element)
     calc_sam!(element)
     secondary_source_concentration = concentration * calc_LF!(element)
-    
-    daf = DAF(secondary_source_concentration, x_source, y_source, 0.0, 0.0, decay_coeff, darcy_velocity, soil_adsorption, soil_density, tera_e, orthogonal_width, time, aquifer_flow_direction, algorithm, option)
+    # Object that will be effectively used during the analysis and passed as a parameter.
+     # The expression that computes the angle fo flow ( "(360 + 180 - aquifer_flow_direction) % 360" ) is there to translate a cartesian angle in one valid for a raster.
+      # In a raster each angle will be mirrored along the Y axis thus the expression above is used to counterbalance this shift. 
+    daf = DAF( secondary_source_concentration, x_source, y_source, 0.0, 0.0, decay_coeff, darcy_velocity, soil_adsorption, soil_density, tera_e, orthogonal_width, time,
+               (540 - aquifer_flow_direction) % 360, algorithm, option )
+    # Run the function that executes the analysis chosing the version based on the presence of a target area.
+     # The function returns a vector of triples rppresenting the relevant cells and their corresponding values.
     points = !isempty(area_file) ? Functions.expand(r_source, c_source, concentration, tollerance, dem, trg_geom, daf) : 
         Functions.expand(r_source, c_source, concentration, tollerance, dem, daf)
-
+    # Find the bounding box of the list of cells returned by `expand`, it will be used to create the final raster.
+     # This allows to create a new raster smaller than the original (it is very unlikely for the cells of the original raster to be all valid
+     # and it wolud be a waste of time and memory to create a resulting raster any bigger than strictly necessary).
     maxR = maximum( point -> point[1], points )
     minR = minimum( point -> point[1], points )
     maxC = maximum( point -> point[2], points )
     minC = minimum( point -> point[2], points )
 
+    # Define various attributes of the raster, including the matrix holding the relevant cells' values, its reference system and others.
     geotransform = agd.getgeotransform(dem)
     geotransform[[1, 4]] = Functions.toCoords(dem, minR, minC)
     noData = Float32(agd.getnodatavalue(agd.getband(dem, 1)))
@@ -328,6 +347,7 @@ function run_leaching(; dem_file::String, source_file::String, area_file::String
             data[r - minR + 1, c - minC + 1] = points[match][3]
         end
     end
+    # Create the raster in memory.
     Functions.writeRaster(data, agd.getdriver("GTiff"), geotransform, refsys, noData, output_path)
 end
 

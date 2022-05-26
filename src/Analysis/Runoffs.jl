@@ -53,7 +53,7 @@ function hash_adjacent( r::Int64, c::Int64 )
     # 3x3 matrix linearization
      # Its necessary to sum 2 to both values of t as they reppresent index displacements from the center of the matrix
       # the linearization process is based on starting index 0, hence the need to sum 2 instead of 3
-      # for the same reason 1 needs to be substracted from the first index, ending up with "t[1] + 1"  
+      # for the same reason 1 needs to be substracted from the first index, ending up with "r + 1"  
     res = 3(r + 1) + (c + 2)
     # The cell of index 5 is the center and it's not needed
     return res >= 5 ? res - 1 : res 

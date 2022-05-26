@@ -23,7 +23,7 @@ const ga = GeoArrays
 const sf = Shapefile
 
 
-repeat!(A::AbstractVector, count::Int64 ) = append!( A, repeat(A, count-1) )
+repeat!( A::AbstractVector, count::Int64 ) = append!( A, repeat(A, count-1) )
 # Functions to find the coordinates of the point resulting from the rotation of "(xp, yp)" by a angle "θ" around "(xc, yc)"
 rotate_x( xp, yp, xc, yc, θ ) = round( Int64, (xp - xc)cos(deg2rad(θ)) - (yp - yc)sin(deg2rad(θ)) + xc )
 rotate_y( xp, yp, xc, yc, θ ) = round( Int64, (xp - xc)sin(deg2rad(θ)) + (yp - yc)cos(deg2rad(θ)) + yc )
@@ -1188,135 +1188,85 @@ Create and save as `output_path` a raster containing the results of model of dis
 - `dB::Float64`: sound intenisty in decibel.
 - `frequency::Float64`: frequency of the sound in hertz.
 """
-# function noise_level( dtm::GeoArrays.GeoArray{Float32}, x0::Float64, y0::Float64, relative_humidity::Float64, temperature_k::FLoat64, frequency::Int64, noData::Float32 )
 function run_noise(; dem_file::AbstractString, terrain_impedences_file::String="", source_file::String, temperature_K::Float64, relative_humidity::Float64,
                      intensity_dB::Float64, frequency::Float64, output_path::String=".\\noise_otput_model.tiff" )
- # Input rasters and source point
+
+    # 192dB is the maximum value possible in decibel for sound pressure level (dB S.P.L.) within Earth's atmosphere.
+     # Also, it is worth mentioning that a value of `intensity_dB` greater than 392 would cause a Integer overflow for the computation of `max_radius`.
+      # Integer overflow is achived for Int64 powers of 10, when 10^x > 2^63, so for x > 18, which would result in the computations below for `intensity_dB > 392`.
+    if intensity_dB < 0 || intensity_dB > 192
+        throw(DomainError(intensity_dB, "Sound intensity value outside of valid range."))
+    end
+    # Input rasters and source point
     noData = -9999.0f0
     dtm = replace( ga.read(dem_file), missing => noData )
     impedences = isempty(terrain_impedences_file) ? fill( 0.0f0, size(dtm) ) : replace( ga.read(terrain_impedences_file), missing => noData )
     src = sf.Table(source_file)
- # Coordinates of the source
+    # Source coordinates
     x0 = src.geometry[1].x
-    y0 = src.geometry[1].y
- # Source cell
+    y0 = src.geometry[1].y 
+    # Source cell
     r0, c0 = ga.indices(dtm, [x0, y0])
- # Source height
+    # Source height
     h0 = dtm[r0, c0][1]
- # Dimensions of a cell
+    # Dimensions of a cell
     Δx, Δy = ( ga.coords(dtm, size(dtm)[1:2]) .- ga.coords(dtm, [1,1]) ) ./ size(dtm)[1:2]
- # Maximum radius according to transmission loss
+    # Maximum radius according to transmission loss.
     max_radius = ceil(10.0^((intensity_dB - 32.0) / 20.0))
- # Number of cell fitting the radius of the area of effect of the sound
-    cell_num = ceil( Int64, max_radius / max(Δx, Δy) )
- # Limits of the area
+    # Number of cell fitting the radius of the area of effect of the sound.
+     # For the sake of avoiding "OutOfMemoryError"s we put an hard cap of 2000 to the number of cells of the radius.
+     # Hard cap of 2000 means that all values over 126dB will be limited as area of effect. 
+    cell_num = min( ceil( Int64, max_radius / max(Δx, Δy) ), 2000 )
+    # Limits of the area
     row_begin = r0 - cell_num
     row_end = r0 + cell_num
     col_begin = c0 - cell_num
     col_end = c0 + cell_num
- # Trivial profiles
-  # Heights and impedences profiles
-    heights_profiles = Vector{Float32}[ Float32[] for i in 1:8 ]
-    impedences_profiles = deepcopy(heights_profiles)
-    coords_profiles = Vector{Tuple{Float64, Float64}}[ Tuple{Float64, Float64}[] for i in 1:8 ]
-    # The index will be used to insert the profiles in the correct places
-    i = 1
-   # x axis
-    @inbounds for int in StepRange{Int64, Int64}[ c0:-1:col_begin, c0:1:col_end ]
-        for c in int
-            push!(heights_profiles[i], dtm[r0, c][1])
-            push!(impedences_profiles[i], impedences[r0, c][1])
-            push!( coords_profiles[i], Tuple{Float64, Float64}(ga.coords(dtm, Int64[r0, c])) )
-        end
-        i += 1
-    end
-   # y axis
-    @inbounds for int in StepRange{Int64, Int64}[ r0:-1:row_begin, r0:1:row_end ]
-        for r in int
-            push!(heights_profiles[i], dtm[r, c0][1])
-            push!(impedences_profiles[i], impedences[r, c0][1])
-            push!( coords_profiles[i], Tuple{Float64, Float64}(ga.coords(dtm, Int64[r, c0])) )
-        end
-        i += 1
-    end
-   # diagonals
-    @inbounds for int in StepRange{Int64, Int64}[ 0:-1:-cell_num, 0:1:cell_num ]
-        for j in int
-            push!(heights_profiles[i], dtm[r0 + j, c0 - j][1])
-            push!(heights_profiles[i+2], dtm[r0 + j, c0 + j][1])
-            push!(impedences_profiles[i], impedences[r0 + j, c0 - j][1])
-            push!(impedences_profiles[i+2], impedences[r0 + j, c0 + j][1])
-            push!( coords_profiles[i], Tuple{Float64, Float64}(ga.coords(dtm, Int64[r0 + j, c0 - j])) )
-            push!( coords_profiles[i+2], Tuple{Float64, Float64}(ga.coords(dtm, Int64[r0 + j, c0 + j])) )
-        end
-        i += 1
-    end
- # Vector containing the indexes of the points on first quadrant of the border of the area of interest
+    # Vector containing the indexes of the points on first quadrant of the border of the area of interest
     endpoints = vcat(
-        Tuple{Int64, Int64}[ (row_begin, col) for col in c0+1:col_end-1 ],
+        Tuple{Int64, Int64}[ (row_begin, col) for col in c0+1:col_end ],
         Tuple{Int64, Int64}[ (row, col_end) for row in row_begin+1:r0 ]
     )
- # Matrix with the resulting intenisty levels on the area of interest
+    # Matrix with the resulting intenisty levels on the area of interest
     intensity_matrix = Float32[ noData for i in 1:(row_end - row_begin + 1), j in 1:(col_end - col_begin + 1) ]
- # Compute and insert the values for the trivial profiles( x and y axes and diagonal profiles )
-    @inbounds for (heights, impdcs, coords) in zip(heights_profiles, impedences_profiles, coords_profiles)
-     # Vector holding the distances from the source to the current point
-        dists = Float64[ distance((x0, y0), coords[1]) ]
-     # The following cycle allows to compute the attenuations on each cell of the profiles
-        for j in 2:length(heights)
-         # Add distance of the current point from source to the distances vector
-            push!( dists, distance((x0, y0), coords[j]) )
-         # Current cell
-            r, c = ga.indices(dtm, [coords[j]...])
-         # If the cell should have a value
-            if dtm[r, c] != noData
-             # Attenuation due to terrain
-                ground_loss = oneCut( view(dists, 1:j), view(heights, 1:j), view(impdcs, 1:j), h0, heights[j], 1, Float64[frequency] )[end]
-             # `ground_loss` returns a value smaller than 0 for invisible/unreachable terrain
-                if ground_loss >= 0.0
-                 # Resulting sound intensity on the cell
-                    intensity = intensity_dB - transmission_loss(dists[j]) - ground_loss
-                 # Intensity values below 32 dB are ignored
-                    if intensity >= 32.0
-                        intensity_matrix[ ( (r, c) .- (row_begin, col_begin) .+ 1 )... ] = Float32(intensity)
-                    end
-                end
-            end
-        end
-    end
- # Compute the values for the remainder of the area
+    intensity_matrix[r0 - row_begin + 1, c0 - col_begin + 1] = intensity_dB
+    # Compute the values for the remainder of the area
     @inbounds for point in endpoints
-        for α in Int64[0, 90, 180, 270]
-         # Arrays of the heigths and the respective coordnates
-            heights, impdcs, coords = DDA( dtm, impedences, r0, c0, rotate_point( point..., r0, c0, α )... )
-         # Array of the distances of each point of the profile from the source
+        for α in 0:90:270
+            # Arrays of the heigths and the respective coordnates
+            heights, impdcs, coords = DDA( dtm, impedences, r0, c0, rotate_point(point..., r0, c0, α)... )
+            # Array of the distances of each point of the profile from the source
             dists = Float64[ distance((x0, y0), coords[1]) ]
-         # Compute the array of the resulting attenuations for each point of a single profile
+            # Compute the array of the resulting attenuations for each point of a single profile
             for j in 2:length(heights)
-             # Add to the distance vector as required at the j-th iteration 
+                # Add to the distance vector as required at the j-th iteration 
                 push!( dists, distance((x0, y0), coords[j]) )
-             # Current cell
+                # Current cell
                 r, c = ga.indices(dtm, [coords[j]...])
-             # If the cell should have a value
+                # If the cell should have a value
                 if dtm[r, c] != noData
-                 # Attenuation due to terrain
+                    # Attenuation due to terrain
                     ground_loss = oneCut( view(dists, 1:j), view(heights, 1:j), view(impdcs, 1:j), h0, heights[j], 1, Float64[frequency] )[end]
-                 # `ground_loss` returns a value smaller than 0 for invisible/unreachable terrain
+                    # `ground_loss` returns a value smaller than 0 for invisible/unreachable terrain
                     if ground_loss >= 0.0
-                     # Resulting sound intensity on the cell
+                        # Resulting sound intensity on the cell
                         intensity = intensity_dB - transmission_loss(dists[j]) - ground_loss
-                     # Intensity values below 32 dB are ignored
+                        # Intensity values below 32 dB are ignored
                         if intensity >= 32.0
-                            intensity_matrix[ ( (r, c) .- (row_begin, col_begin) .+ 1 )... ] = Float32(intensity)
+                            nr = r - row_begin + 1
+                            nc = c - col_begin + 1
+                            intensity_matrix[nr, nc] = max(intensity_matrix[nr, nc], Float32(intensity))
                         end
                     end
                 end
             end
         end
     end
+    # Define the geotranformation for the raster.
     geotransform = agd.getgeotransform(dtm)
     geotransform[[1, 4]] = Functions.toCoords(geotransform, row_begin, col_begin)
-    Functions.writeRaster(intensity_matrix, agd.getdriver("GTiff"), geotransform, dtm.crs.val, noData, output_path) 
+    # Create the raster in memory.
+    Functions.writeRaster(intensity_matrix, agd.getdriver("GTiff"), geotransform, dtm.crs.val, noData, output_path)
 end
 
 
