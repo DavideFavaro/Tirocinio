@@ -71,7 +71,7 @@ Given a NxMxH dimensional matrix `data`, create a raster file with H NxM bands a
 using `driver` to define the format.  
 """
 function writeRaster( data::Array{Float32}, driver::ArchGDAL.Driver, geotransform::Vector{Float64}, refsys::AbstractString, noDataValue::Real, output_file_path::AbstractString )
-    rows, cols, bands = length(size(data)) < 3 ? (size(data)..., 1) : size(data) 
+    rows, cols, bands = length(size(data)) < 3 ? (size(data)..., 1) : size(data)
     agd.create(output_file_path, driver=driver, width=rows, height=cols, nbands=bands, dtype=Float32) do res_raster
         for i in 1:bands
             agd.setnodatavalue!(agd.getband(res_raster, i), noDataValue)
@@ -83,7 +83,61 @@ function writeRaster( data::Array{Float32}, driver::ArchGDAL.Driver, geotransfor
     return nothing
 end
 
-# Additional functions
+
+
+"""
+   fill_data_matrix!( data::Matrix{Float32}, points::Vector{T}, minC::Int64, maxR::Int64 ) where {T <: Tuple{Int64, Int64, Float64}}
+
+Fill matrix `data` with the third values of the triplets contained in `points` using the first two values to find the right cell and `minC` and `maxR` as references.
+"""
+function fill_data_matrix!( data::Matrix{Float32}, points::Vector{T}, minR::Int64, maxR::Int64 ) where {T <: Tuple{Int64, Int64, Float64}}
+   # For each cell of data matrix look for the point the triplet of points that has the same values for row and column
+    # and copy its value in the matrix.
+   @inbounds for c in points[1][2]:points[end][2], r in minR:maxR
+      match = findfirst( p -> p[1] == r && p[2] == c, points )
+      if !isnothing(match)
+         data[r - minR + 1, c - points[1][2] + 1] = points[match][3]
+      end
+   end
+end
+
+
+"""
+   create_raster_as_subset( origin_raster::ArchGDAL.IDataset, points_of_interest::AbstractVector{T}, output_file_path::AbstractString ) where {T <: Tuple{Int64, Int64, Float64}}
+
+Create a raster in memory as `output_file_path` using `origin_raster` as basis and `points_of_interest` for the values of the raster.
+"""
+function create_raster_as_subset( origin_raster::ArchGDAL.IDataset, points_of_interest::AbstractVector{T}, output_file_path::AbstractString ) where {T <: Tuple{Int64, Int64, Float64}}
+   # Sort points first by column value (first element of the triplet) and then by row value (second value of the triplet), ignoring the third value.
+    # The column first ordering is due to Julia being column-major.
+    # For example the vector:
+    #    [ (2, 1, 1.1), (3, 5, 2.2), (1, 1, 3.3) ]
+    # would be reordered as:
+    #    [ (1, 1, 3.3), (2, 1, 1.1), (3, 5, 2.2) ]
+   sort!( points_of_interest, lt=(x, y) -> x[2] < y[2] || ( x[2] == y[2] && x[1] < y[1] ) )
+   # Find the bounding box of the list of cells returned by `expand`, it will be used to create the final raster.
+     # This allows to create a new raster smaller than the original (it is very unlikely for the cells of the original raster to be all valid
+     # and it wolud be a waste of time and memory to create a resulting raster any bigger than strictly necessary).
+   # After the sort the minimum value for the columns is the second element of the first triplet and maximum value for the columns is the second element of the last triplet.
+   # The other two values need to be looked for.
+   minR = minimum( point -> point[1], points_of_interest )
+   maxR = maximum( point -> point[1], points_of_interest )
+   # Define various attributes of the raster, including the matrix holding the relevant cells' values, its reference system and others.
+   geotransform = agd.getgeotransform(origin_raster)
+   geotransform[[1, 4]] = toCoords(origin_raster, minR, points_of_interest[1][2])
+   noData = Float32(agd.getnodatavalue(agd.getband(origin_raster, 1)))
+   data = fill(
+      noData,
+      maxR - minR + 1,
+      points_of_interest[end][2] - points_of_interest[1][2] + 1
+   )
+   # Populate the matrix, that will be used as base for the creation of the final raster.
+   fill_data_matrix!(data, points_of_interest, minR, maxR)
+   # Create the raster in memory.
+   writeRaster(data, agd.getdriver("GTiff"), geotransform, agd.getproj(origin_raster), noData, output_file_path)
+end
+
+
 
 """
     getCellDims( dtm::ArchGDAL.AbstractDataset )
@@ -159,6 +213,69 @@ end
 
 function toIndexes( geotransform::Vector{Float64}, x::Float64, y::Float64 )
     return round.( Int64, ( ( (x, y) .- geotransform[[1,4]] ) ./ geotransform[[2,6]] ) )
+end
+
+
+
+"""
+   verify_and_return( source_file_path::String, raster_file_path::String )
+
+Check wether the shapefile pointed at by the `source_file_path` is valid as source point and the raster pointed at by `raster_file_path` has the
+same coordinate reference system(CRS) as the source, if so return the geometry of the source and the raster, otherwise throw a `DomainError`.
+"""
+function verify_and_return( source_file_path::String, raster_file_path::String )
+   src_geom = agd.getgeom(collect(agd.getlayer(agd.read(source_file_path), 0))[1])
+
+   if agd.geomdim(src_geom) != 0
+      throw(DomainError(source_file_path, "`source` must be a point"))
+   end
+
+   raster = agd.read(raster_file_path)
+
+   if agd.toWKT(agd.getspatialref(src_geom)) != agd.getproj(raster)
+      throw(DomainError("The reference systems are not uniform. Aborting analysis."))
+   end
+
+   return src_geom, raster
+end
+
+"""
+   verify_and_return( source_file_path::String, target_area_file_path::String, raster_file_path::String )
+
+Check wether the shapefile pointed at by `source_file_path` is valid as source point, the target area shapefile pointed at by `target_area_file_path` is a valid
+target area and the coordinate reference system(CRS) is the same for all files.
+If all the conditions are met return the geometry of the source, that of the target area and the raster, otherwise throw a `DomainError`.
+"""
+function verify_and_return( source_file_path::String, target_area_file_path::String, raster_file_path::String )
+   
+   src_geom = agd.getgeom(collect(agd.getlayer(agd.read(source_file_path), 0))[1])
+
+   if agd.geomdim(src_geom) != 0
+      throw(DomainError(source_file_path, "The source must be a point"))
+   end
+
+   trg_geom = agd.getgeom(collect(agd.getlayer(agd.read(target_area_file_path), 0))[1])
+   
+   if agd.geomdim(trg_geom) != 2
+      throw(DomainError(target_area_file_path, "The target area must be a polygon."))
+   end
+   if !agd.contains(trg_geom, src_geom)
+      throw(DomainError("The target area polygon must contain the source."))
+   end
+
+   refsys = agd.getspatialref(src_geom)
+
+   if agd.getspatialref(trg_geom) != refsys
+      throw(DomainError("The reference systems are not uniform."))
+   end
+
+   raster = agd.read(raster_file_path)
+
+   if agd.getproj(raster) != agd.toWKT(refys)
+      throw(DomainError("The reference systems are not uniform."))
+   end
+
+   return src_geom, trg_geom, raster
 end
 
 
@@ -367,3 +484,6 @@ end
 
 
 end # module
+
+
+

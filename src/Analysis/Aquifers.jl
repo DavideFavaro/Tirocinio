@@ -278,39 +278,18 @@ function run_leaching(; dem_file::String, source_file::String, area_file::String
         throw(DomainError(texture, "Analysis error, check input parameters"))
     end
 
-    # Read source shapefile and get its geometry.
-     # Reading spatial data is costly, thus, reading it after the most basic check allows to save time in case those fail.
-    src_geom = agd.getgeom(collect(agd.getlayer(agd.read(source_file), 0))[1])
-    # Check that the geometry is a point.
-    if agd.geomdim(src_geom) != 0
-        throw(DomainError(source, "`source` must be a point"))
-    end
-
-    # Read the raster and obtain its projection.
-     # The reason for the position of the read is the same as the source shapefile.
-    dem = agd.read(dem_file)
-    refsys = agd.getproj(dem)
-    # Check that the projection is the same as the coordinate reference system of the source shapefile.
-    if refsys != agd.toWKT(agd.getspatialref(src_geom))
-        throw(DomainError("The reference systems are not uniform."))
-    end
-
-    # Check if the path of the shapefile for the target area is given and, in case, if the shapefile is valid.
+    # Initialize spatial data, checking wether there is a target area to initialize or not.
     if !isempty(area_file)
-        trg_geom = agd.getgeom(collect(agd.getlayer(agd.read(area_file), 0))[1])
-
-        agd.geomdim(trg_geom) != 2 && throw(DomainError(area_file, "`area` must be a polygon."))
-        agd.toWKT(agd.getspatialref(trg_geom)) != refsys && throw(DomainError("The reference systems are not uniform."))
-        !agd.contains(trg_geom, src_geom) && throw(DomainError(area_file, "`area` polygon must contain the source."))
+        src_geom, trg_geom, dem = Functions.verify_and_return(source_file, area_file, dem_file)
+    else
+        src_geom, dem = Functions.verify_and_return(source_file, dem_file)
     end
 
     effective_infiltration *= (mean_rainfall / 10.0)^2.0
-
     # Find the location of the source in the raster (as raster indexes).
     x_source = agd.getx(src_geom, 0)
     y_source = agd.gety(src_geom, 0)
     r_source, c_source = Functions.toIndexes(dem, x_source, y_source)
-
     # Create an instance of the first object used to aid in the analysis process.
     # Its main use is to gather values and the physical computations in one place.
     element = Leach( henry_const, volumetric_water_content, volumetric_air_content, soil_adsorption, effective_infiltration, soil_density, source_thickness, aquifer_depth,
@@ -328,27 +307,8 @@ function run_leaching(; dem_file::String, source_file::String, area_file::String
      # The function returns a vector of triples rppresenting the relevant cells and their corresponding values.
     points = !isempty(area_file) ? Functions.expand(r_source, c_source, concentration, tollerance, dem, trg_geom, daf) : 
         Functions.expand(r_source, c_source, concentration, tollerance, dem, daf)
-    # Find the bounding box of the list of cells returned by `expand`, it will be used to create the final raster.
-     # This allows to create a new raster smaller than the original (it is very unlikely for the cells of the original raster to be all valid
-     # and it wolud be a waste of time and memory to create a resulting raster any bigger than strictly necessary).
-    maxR = maximum( point -> point[1], points )
-    minR = minimum( point -> point[1], points )
-    maxC = maximum( point -> point[2], points )
-    minC = minimum( point -> point[2], points )
-
-    # Define various attributes of the raster, including the matrix holding the relevant cells' values, its reference system and others.
-    geotransform = agd.getgeotransform(dem)
-    geotransform[[1, 4]] = Functions.toCoords(dem, minR, minC)
-    noData = Float32(agd.getnodatavalue(agd.getband(dem, 1)))
-    data = fill(noData, maxR-minR+1, maxC-minC+1)
-    for r in minR:maxR, c in minC:maxC
-        match = findfirst( p -> p[1] == r && p[2] == c, points )
-        if !isnothing(match)
-            data[r - minR + 1, c - minC + 1] = points[match][3]
-        end
-    end
-    # Create the raster in memory.
-    Functions.writeRaster(data, agd.getdriver("GTiff"), geotransform, refsys, noData, output_path)
+    # Create the resulting raster in memory.
+    Functions.create_raster_as_subset(dem, points, output_path)
 end
 
 

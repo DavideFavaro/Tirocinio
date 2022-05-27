@@ -130,58 +130,21 @@ function run_plume(; dem_file::String, source_file::String, stability::String, o
         throw(DomainError(outdoor, "`outdoor` must either be `\"c\"` or `\"u\"`."))
     end
 
-    # Read source shapefile and get its geometry.
-     # Reading spatial data is costly, thus, reading it after the most basic check allows to save time in case those fail.
-    src_geom = agd.getgeom(collect(agd.getlayer(agd.read(source_file), 0))[1])
-    # Check that the geometry is a point.
-    if agd.geomdim(src_geom) != 0
-        throw(DomainError(source_file, "The shapefile must contain a point."))
-    end
+    src_geom, dem = Functions.verify_and_return(source_file, dem_file)
 
-    # Read the raster and obtain its projection.
-     # The reason for the position of the read is the same as the source shapefile.
-    dem = agd.read(dem_file)
     refsys = agd.getproj(dem)
-    # Check that the projection is the same as the coordinate reference system of the source shapefile.
-    if refsys != agd.toWKT(agd.getspatialref(src_geom))
-        throw(DomainError("The reference systems are not uniform. Aborting analysis."))
-    end
-
     # Find the location of the source in the raster (as raster indexes).
     x_source = agd.getx(src_geom, 0)
     y_source = agd.gety(src_geom, 0)
     r_source, c_source = Functions.toIndexes(dem, x_source, y_source)
-
     # Create an instance of the object used to aid in the analysis process.
     plume = Plume( concentration, x_source, y_source, agd.getband(dem, 1)[r_source, c_source], stability, outdoor, stack_height, stack_diameter,
                    (540 - wind_direction) % 360, wind_speed, gas_velocity, gas_temperature, temperature, 0.0 )
     # Run the function that executes the analysis.
      # The function returns a vector of triples rppresenting the relevant cells and their corresponding values.
     points = Functions.expand(r_source, c_source, concentration, tollerance, dem, plume)
-    # Find the bounding box of the list of cells returned by `expand`, it will be used to create the final raster.
-     # This allows to create a new raster smaller than the original (it is very unlikely for the cells of the original raster to be all valid
-     # and it wolud be a waste of time and memory to create a resulting raster any bigger than strictly necessary).
-    maxR = maximum( point -> point[1], points )
-    minR = minimum( point -> point[1], points )
-    maxC = maximum( point -> point[2], points )
-    minC = minimum( point -> point[2], points )
-
-    # Define various attributes of the raster, including the matrix holding the relevant cells' values, its reference system and others.
-    geotransform = agd.getgeotransform(dem)
-    geotransform[[1, 4]] = Functions.toCoords(dem, minR, minC)
-    noData = Float32(agd.getnodatavalue(agd.getband(dem, 1)))
-    data = fill(noData, maxR-minR+1, maxC-minC+1)
-    if isnothing(data) || isempty(data)
-        throw(ErrorException("Analysis failed"))
-    end
-    @inbounds for r in minR:maxR, c in minC:maxC
-        match = findfirst( p -> p[1] == r && p[2] == c, points )
-        if !isnothing(match)
-            data[r-minR+1, c-minC+1] = points[match][3]
-        end
-    end
-    # Create the raster in memory.
-    Functions.writeRaster(data, agd.getdriver("GTiff"), geotransform, refsys, noData, output_path)
+    # Create the resulting raster in memory.
+    Functions.create_raster_as_subset(dem, points, output_path)
 end
 
 
