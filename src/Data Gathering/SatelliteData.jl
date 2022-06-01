@@ -1,7 +1,6 @@
+"""Module for the Download and processing of descriptors of satellitar data from the Copernicus project databases."""
 module SatelliteData
-"""
-Module for the Download and processing of descriptors of satellitar data from the Copernicus project databases.
-"""
+
 
 
 using ArchGDAL
@@ -332,62 +331,6 @@ function checkAvailabile( data_path::AbstractString, username::AbstractString, p
     CSV.write( *( @__DIR__, "\\Dati di prova\\data.csv" ), old_data )
 end
 
-#=
-test = [ "C:\\Users\\DAVIDE-FAVARO\\Desktop\\XML\\1.xml",
-         "C:\\Users\\DAVIDE-FAVARO\\Desktop\\XML\\2.xml",
-         "C:\\Users\\Lenovo\\Desktop\\XML\\1.xml",
-         "C:\\Users\\Lenovo\\Desktop\\XML\\2.xml",
-         "C:\\Users\\Lenovo\\Desktop\\XML\\Prod_Test.xml" ]
-
-out = [ "D:\\Vario\\Stage",
-        "C:\\Users\\Lenovo\\Desktop\\XML",
-        "C:\\Users\\Lenovo\\Desktop\\XML\\Test",
-        "C:\\Users\\DAVIDE-FAVARO\\Desktop",
-        "C:\\Users\\DAVIDE-FAVARO\\Desktop\\XML" ]
-=#
-
-#   df = getProductsDF( authenticate("davidefavaro","Tirocinio"), 1000 )
-#   saveProductsDF( out[2], df )
-
-
-#   df = getProductsDF( authenticate("davidefavaro","Tirocinio"), max=1, last=true )
-#   odf = CSV.read( "D:\\Documents and Settings\\DAVIDE-FAVARO\\My Documents\\GitHub\\Tirocinio\\Dati di prova\\data.csv", DataFrame )
-#   odf = CSV.read( "C:\\Users\\Lenovo\\Documents\\GitHub\\Tirocinio\\Dati di prova\\data.csv", DataFrame )
-
-
-#   saveProductsDF( "C:\\Users\\Lenovo\\Documents\\GitHub\\Tirocinio\\Dati di prova", df )
-#   saveProductsDF( "D:\\Documents and Settings\\DAVIDE-FAVARO\\My Documents\\GitHub\\Tirocinio\\Dati di prova", df )
-
-
-#   odf = CSV.read( "C:\\Users\\Lenovo\\Documents\\GitHub\\Tirocinio\\Dati di prova\\data.csv", DataFrame )
-#   checkAvailabile(*( @__DIR__, "\\Dati di prova\\data.csv"), "davidefavaro", "Tirocinio")
-#   ndf = CSV.read( "C:\\Users\\Lenovo\\Documents\\GitHub\\Tirocinio\\Dati di prova\\data.csv", DataFrame )
-
-
-
-
-# :footprint o :gmlfootprint ci dovrebbero dare il poligono
-#= La selezione dei prodotti potrebbe avvenire inbase a:
-    - :processinglevel / :productlevel ( livello 2A )
-    - :instrumentname / :instrumentshortname
-    - :size
-    - :cloudcoverpercentage + :platformname ( cc minima per Sentinel-2A )
-    - :status ?
-    - :available
-=#
-
-#   sat_file = *( @__DIR__, "\\..\\Mappe\\sat\\sette_sorelle.shp" )
-#   aoi = getAoi(sat_file)
-#   df = getProductsDF( authenticate("davidefavaro","Tirocinio"), aoi=aoi )
-#
-# PRENDERE IL PRIMO PRODOTTO PER OGNI MESE POTREBBE NON ESSERE UNA BUON IDEA
-#   idxs = [ findfirst( date -> month(date) == m, df[:, :beginposition] ) for m in month( now() - Month(6) ) : month( now() ) ]
-#
-#   res = df[ idxs, : ]
-#
-#   aoi_geom = agd.fromWKT( replace(aoi, "%20" => " ") )
-#   
-#   intersections = agd.intersection.()
 
 
 """
@@ -472,24 +415,6 @@ function dowloadProducts( userame::AbstractString, password::AbstractString, uui
             )
     end
 end
-
-#   downloadProducts( "b57f225e-d288-4e4a-bb35-2a7eb75d60e4", out[3], authenticate("davidefavaro", "Tirocinio")  )
-
-# SI OTTENGONO SOLO Sentinel-3 PERCHE' TUTTI GLI ALTRI PRODOTTI HANNO :productlevel missing
-# PER MESE 6 SI HANNO SOLO Sentinel-3
-#   n, p = ("davidefavaro", "Tirocinio")
-#   dir = "C:\\Users\\DAVIDE-FAVARO\\Desktop"
-#   dir = "D:\\Z_Tirocinio_Dati\\Copernicus Data"
-#   uuid = "de9494a3-fdd9-46ce-98cb-42a2632e8b87"
-#   sat_file = *( @__DIR__, "\\..\\Mappe\\sat\\sette_sorelle.shp" )
-#   res = selectProducts(n, p, sat_file, 1, 12, 6)
-#=
-    downloadProducts(n, p, res[:, :uuid], dir)
-    downloadProducts(n, p, uuid, dir)
-=#
-
-
-# @code_warntype res = selectProducts( authToken, sat_file, 1, 12, 6 )
 
 
 

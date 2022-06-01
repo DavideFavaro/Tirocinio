@@ -84,7 +84,8 @@ end
 
 
 function calc_ldf!( l::Leach )
-    darcy = l.darcy_velocity * 100.0 * 86400.0 * 365.0
+    #   darcy = l.darcy_velocity * 100.0 * 86400.0 * 365.0
+    darcy = l.darcy_velocity * 3.1536e9
     l.ldf = 1.0 + ( darcy * ( l.mixing_zone_depth / ( l.effective_infiltration * l.orthogonal_width ) ) )
     return l.ldf
 end
@@ -112,12 +113,6 @@ end
 
 
 function calc_DAF_ispra!( c::DAF )
-    ######################## modello di domenico ###########################
-    # vedere appendice C pagina 2 del documento Criteri metodologici per l'applicazione dell'analisi assoluta di rischio ai siti contaminati
-    # la formula originale prevede la produttoria delle 3 componenti x,y,z moltiplicata per 1/4
-    # eliminando la terza componente dell'asse z è necessario moltplicare per 1/2 (quindi 0.5)
-    # per verifica vedere Domenico P.A. e Schwartz F.W. (1998), Physical and Chemical Hydrogeology, John Wiley and Sons, New York.
-    # da pagina 642 a pag 644
     if c.α_x == 0.0
       c.α_x = 0.1c.x
     end
@@ -125,12 +120,10 @@ function calc_DAF_ispra!( c::DAF )
       c.α_y = c.α_x / 3.0
     end
     R = 1.0 + ( c.soil_adsorption * ( c.soil_density / c.tera_e ) )
-    daf1 = 0.50ℯ^( ( c.x / 2.0c.α_x ) * ( 1 - √( 1.0 + ( ( 4.0c.decay_coeff * c.α_x * R ) / c.darcy_velocity ) ) ) )
+    daf1 = 0.5ℯ^( ( c.x / 2.0c.α_x ) * ( 1 - √( 1.0 + ( ( 4.0c.decay_coeff * c.α_x * R ) / c.darcy_velocity ) ) ) )
     daf21 = erf( ( c.y + 0.5c.orthogonal_width ) / ( 2.0√( c.α_y * c.x ) ) )
     daf22 = erf( ( c.y - 0.5c.orthogonal_width ) / ( 2.0√( c.α_y * c.x ) ) )
-    daf3 = daf21 - daf22
-    DAF_tot = daf1 * daf3
-    return DAF_tot
+    return daf1 * (daf21 - daf22)
 end
 
 
@@ -141,9 +134,7 @@ function calc_DAF_ispra2!( c::DAF )
     if c.α_y == 0.0
       c.α_y = c.α_x / 3.0
     end
-    #daf1 = ( c.x / 2c.α_x ) * ( 1 - √( 1 + ( ( 4c.decay_coeff * c.α_x * c.R ) / c.darcy_velocity ) ) )
-    daf1 = exp( c.x / ( 2.0c.α_x ) * 0 )
-    #daf1e = exp(daf1)
+    daf1 = exp( c.x / ( 2.0c.α_x ) * 0.0 )
     daf2 = erf( c.orthogonal_width / ( 4.0√( c.α_y * c.x ) ) )
     c.DAF = daf1 * daf2
     return c.DAF
@@ -151,10 +142,10 @@ end
 
 
 function calc_DAF!( c::DAF )
-    if c.α_x == 0
+    if c.α_x == 0.0
       c.α_x = 0.1( c.x / 100.0 )
     end
-    if c.α_y == 0
+    if c.α_y == 0.0
       c.α_y = c.α_x / 3.0
     end
     dx = c.α_x * c.darcy_velocity
@@ -167,7 +158,7 @@ end
 
 
 function calc_DAF_uni!( c::DAF )
-    if c.α_x == 0
+    if c.α_x == 0.0
       c.α_x = 0.1c.x
     end
     dx = c.α_x * c.darcy_velocity
@@ -180,10 +171,10 @@ end
 
 function calc_DAF_c!( c::DAF )
     #continuous
-    if c.α_x == 0
+    if c.α_x == 0.0
       c.α_x = 0.1c.x
     end
-    if c.α_y == 0
+    if c.α_y == 0.0
       c.α_y = c.α_x / 3.0
     end
     dx = c.α_x * c.darcy_velocity
@@ -198,18 +189,7 @@ end
 
 function Functions.compute_concentration!( d::DAF )
     concentration = 0.0
-    if d.x > 0
-     #=
-        if d.algorithm == :fickian
-            if d.option == :pulse
-                concentration = calc_DAF!(d)
-            else
-                concentration = calc_DAF_c!(d)
-            end
-        else
-            concentration = d.secondary_source_concentration * calc_DAF_ispra!(d)
-        end
-     =#
+    if d.x > 0.0
         concentration = d.algorithm == :fickian ? d.option == :pulse ? calc_DAF!(d) : calc_DAF_c!(d) : d.secondary_source_concentration * calc_DAF_ispra!(d)
     end
     return concentration
@@ -249,7 +229,7 @@ Run the simulation of leaching and dispersion of contaminants in an aquifer, ret
 - `algorithm::Symbol=:fickian`: type of algorithm to be used.
 - `option::Symbol=:continuous`: second option to define the kind o algorithm to use.
 - `output_path::String=".\\aquifer_output_model.tiff": output file path. 
-"""
+"""#=
 function run_leaching(; dem_file::String, source_file::String, area_file::String="", contaminantCASNum::String, concentration::Float64, tollerance::Int64=2, 
                         aquifer_depth::Float64, aquifer_flow_direction::Int64, mean_rainfall::Float64, texture::String, resolution::Float64, time::Int64=1,
                         orthogonal_width::Float64=10000.0, soil_density::Float64=1.70, source_thickness::Float64=1.0, darcy_velocity::Float64=0.000025,
@@ -293,7 +273,7 @@ function run_leaching(; dem_file::String, source_file::String, area_file::String
     # Create an instance of the first object used to aid in the analysis process.
     # Its main use is to gather values and the physical computations in one place.
     element = Leach( henry_const, volumetric_water_content, volumetric_air_content, soil_adsorption, effective_infiltration, soil_density, source_thickness, aquifer_depth,
-                     darcy_velocity, mixing_zone_depth, orthogonal_width ) 
+                     darcy_velocity, mixing_zone_depth, orthogonal_width )
     calc_kw!(element)
     calc_ldf!(element)
     calc_sam!(element)
@@ -309,6 +289,117 @@ function run_leaching(; dem_file::String, source_file::String, area_file::String
         Functions.expand(r_source, c_source, concentration, tollerance, dem, daf)
     # Create the resulting raster in memory.
     Functions.create_raster_as_subset(dem, points, output_path)
+end
+=#
+function run_leaching( dem_file::String, source_file::String, aquifer_area_file::String, contaminantCASNum::String,
+                       concentration::Float64, aquifer_depth::Float64, aquifer_flow_direction::Int64, mean_rainfall::Float64, texture::String;
+                       tollerance::Int64=2, time::Int64=1, orthogonal_width::Float64=10000.0, soil_density::Float64=1.70, source_thickness::Float64=1.0,
+                       darcy_velocity::Float64=0.000025, mixing_zone_depth::Float64=1.0, decay_coeff::Float64=0.0, algorithm::Symbol=:fickian, option::Symbol=:continuous,
+                       output_path::String=".\\aquifer_output_model.tiff" )
+
+    if tollerance < 1 || tollerance > 4
+        throw(DomainError(tollerance, "`tollerance` value must be between 1 and 4"))
+    end
+
+    if algorithm ∉ [:fickian, :domenico]
+        throw(DomainError(algorithm, "`algorithm` must either be `:fickian` or `:domenico`"))
+    end
+
+    if option ∉ [:pulse, :continuous]
+        throw(DomainError(option, "`option` must either be `:continuous` or `:pulse`"))
+    end
+
+    # Read values concerning the substance that will be used in the analysis, from the database.
+    henry_const, soil_adsorption = FunctionsDB.substance_extract(contaminantCASNum, ["c_henry", "koc_kd"])[1, :]
+    # Check for actual results.
+    if isempty(henry_const) && isempty(soil_adsorption)
+        throw(DomainError(contaminantCASNum, "Analysis error, check input parameters"))
+    end
+
+    # Read values concerning the texture of the terrain that will be used in the analysis, from the database.
+    volumetric_air_content, volumetric_water_content, effective_infiltration, tera_e, grain = FunctionsDB.texture_extract(texture, ["tot_por", "c_water_avg", "ief", "por_eff", "grain"])[1, :]
+    # Check for actual results.
+    if any(isempty.([volumetric_air_content, volumetric_water_content, effective_infiltration, tera_e, grain]))
+        throw(DomainError(texture, "Analysis error, check input parameters"))
+    end
+
+    src_geom, aqf_geom, dem = Functions.check_and_return_spatial_data(source_file, aquifer_area_file, dem_file)
+
+    effective_infiltration *= (mean_rainfall / 10.0)^2.0
+    # Find the location of the source in the raster (as raster indexes).
+    x_source = agd.getx(src_geom, 0)
+    y_source = agd.gety(src_geom, 0)
+    r_source, c_source = Functions.toIndexes(dem, x_source, y_source)
+    # Create an instance of the first object used to aid in the analysis process.
+    # Its main use is to gather values and the physical computations in one place.
+    element = Leach( henry_const, volumetric_water_content, volumetric_air_content, soil_adsorption, effective_infiltration, soil_density, source_thickness, aquifer_depth,
+                     darcy_velocity, mixing_zone_depth, orthogonal_width )
+    calc_kw!(element)
+    calc_ldf!(element)
+    calc_sam!(element)
+    secondary_source_concentration = concentration * calc_LF!(element)
+    # Object that will be effectively used during the analysis and passed as a parameter.
+     # The expression that computes the angle fo flow ( "(360 + 180 - aquifer_flow_direction) % 360" ) is there to translate a cartesian angle in one valid for a raster.
+      # In a raster each angle will be mirrored along the Y axis thus the expression above is used to counterbalance this shift. 
+    daf = DAF( secondary_source_concentration, x_source, y_source, 0.0, 0.0, decay_coeff, darcy_velocity, soil_adsorption, soil_density, tera_e, orthogonal_width, time,
+               (540 - aquifer_flow_direction) % 360, algorithm, option )
+    # Run the function that executes the analysis chosing the version based on the presence of a target area.
+     # The function returns a vector of triples rppresenting the relevant cells and their corresponding values.
+    points = Functions.expand(r_source, c_source, concentration, tollerance, dem, aqf_geom, daf)
+    # Create the resulting raster in memory.
+    Functions.create_raster_as_subset(dem, points, output_path)
+end
+
+function run_leaching( dem_file::String, source_file::String, aquifer_area_file::String, target_area_file::String, contaminantCASNum::String, concentration::Float64,
+                       aquifer_depth::Float64, aquifer_flow_direction::Int64, mean_rainfall::Float64, texture::String; time::Int64=1, orthogonal_width::Float64=10000.0,
+                       soil_density::Float64=1.70, source_thickness::Float64=1.0, darcy_velocity::Float64=0.000025, mixing_zone_depth::Float64=1.0,
+                       decay_coeff::Float64=0.0, algorithm::Symbol=:fickian, option::Symbol=:continuous, output_path::String=".\\aquifer_output_model.tiff" )
+
+    if algorithm ∉ [:fickian, :domenico]
+        throw(DomainError(algorithm, "`algorithm` must either be `:fickian` or `:domenico`"))
+    end
+
+    if option ∉ [:pulse, :continuous]
+        throw(DomainError(option, "`option` must either be `:continuous` or `:pulse`"))
+    end
+
+    # Read values concerning the substance that will be used in the analysis, from the database.
+    henry_const, soil_adsorption = FunctionsDB.substance_extract(contaminantCASNum, ["c_henry", "koc_kd"])[1, :]
+    # Check for actual results.
+    if isempty(henry_const) && isempty(soil_adsorption)
+        throw(DomainError(contaminantCASNum, "Analysis error, check input parameters"))
+    end
+
+    # Read values concerning the texture of the terrain that will be used in the analysis, from the database.
+    volumetric_air_content, volumetric_water_content, effective_infiltration, tera_e, grain = FunctionsDB.texture_extract(texture, ["tot_por", "c_water_avg", "ief", "por_eff", "grain"])[1, :]
+    # Check for actual results.
+    if any(isempty.([volumetric_air_content, volumetric_water_content, effective_infiltration, tera_e, grain]))
+        throw(DomainError(texture, "Analysis error, check input parameters"))
+    end
+
+    src_geom, aqf_geom, trg_geom, dem = Functions.check_and_return_spatial_data(source_file, aquifer_area_file, target_area_file, dem_file)
+
+    effective_infiltration *= (mean_rainfall / 10.0)^2.0
+    # Find the location of the source in the raster (as raster indexes).
+    x_source = agd.getx(src_geom, 0)
+    y_source = agd.gety(src_geom, 0)
+    r_source, c_source = Functions.toIndexes(dem, x_source, y_source)
+    # Create an instance of the first object used to aid in the analysis process.
+    # Its main use is to gather values and the physical computations in one place.
+    element = Leach( henry_const, volumetric_water_content, volumetric_air_content, soil_adsorption, effective_infiltration, soil_density, source_thickness, aquifer_depth,
+                     darcy_velocity, mixing_zone_depth, orthogonal_width )
+    calc_kw!(element)
+    calc_ldf!(element)
+    calc_sam!(element)
+    secondary_source_concentration = concentration * calc_LF!(element)
+    # Object that will be effectively used during the analysis and passed as a parameter.
+     # The expression that computes the angle fo flow ( "(360 + 180 - aquifer_flow_direction) % 360" ) is there to translate a cartesian angle in one valid for a raster.
+      # In a raster each angle will be mirrored along the Y axis thus the expression above is used to counterbalance this shift. 
+    daf = DAF( secondary_source_concentration, x_source, y_source, 0.0, 0.0, decay_coeff, darcy_velocity, soil_adsorption, soil_density, tera_e, orthogonal_width, time,
+               (540 - aquifer_flow_direction) % 360, algorithm, option )
+    data = Functions.analyze_area(r_source, c_source, concentration, dem, aqf_geom, trg_geom, daf)
+    # Create the resulting raster in memory.
+    Functions.create_raster_as_subset(dem, trg_geom, data, output_path)
 end
 
 

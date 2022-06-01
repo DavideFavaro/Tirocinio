@@ -134,14 +134,14 @@ using Revise
 using ArchGDAL
 
 
-include(".\\Analysis\\DiluitionAttenuationFactor.jl")
+include(".\\Analysis\\Aquifers.jl")
 include(".\\Analysis\\Lakes.jl")
 include(".\\Analysis\\Plumes.jl")
 include(".\\Analysis\\Sediments.jl")
 
 
 const agd = ArchGDAL
-const daf = DiluitionAttenuationFactor 
+const aqf = Aquifers 
 const lks = Lakes
 const plm = Plumes
 const sed = Sediments
@@ -168,13 +168,13 @@ dtm = "C:\\Users\\Lenovo\\Documents\\GitHub\\Tirocinio\\resources\\Analysis data
     indice 1° decadimento: non messo
     metodo: Domenico/Schwartz
 =#
-daf.run_leaching(
+aqf.run_leaching(
     dem_file = src,
     source_file = src,
     contaminants = ["Tetracloroetilene (PCE)"],
     concentrations = [100.0],
     aquifier_depth = 1000.0,
-    aquifier_flow_direction = angle,
+    aquifier_flow_direction = 0,
     mean_rainfall = rain,
     texture = "sand",
     resolution = 25,
@@ -183,7 +183,7 @@ daf.run_leaching(
     darcy_velocity = 0.000025,
     mixed_zone_depth = 1580.0,
     option = :domenico,
-    output_path = "C:\\Users\\Lenovo\\Documents\\GitHub\\Tirocinio\\resources\\Analysis results\\test_daf.tiff"
+    output_path = "C:\\Users\\Lenovo\\Documents\\GitHub\\Tirocinio\\resources\\Analysis results\\test_aquifer.tiff"
 )
 
 
@@ -241,6 +241,9 @@ plm.run_plume(
 
 
 
+
+
+
 using ArchGDAL
 include(".\\Analysis\\Utils\\Functions.jl")
 const agd = ArchGDAL
@@ -254,34 +257,85 @@ src_c = Functions.toCoords(d, src_i...)
 
 
 
-using Revise
+# CREAZIONE POLYGONO TARGET
 using ArchGDAL
-include(".\\Analysis\\Plumes.jl")
-const plm = Plumes
+include(".\\Analysis\\Utils\\Functions.jl")
+const agd = ArchGDAL
+dtm = "C:\\Users\\Lenovo\\Documents\\GitHub\\Tirocinio\\resources\\Analysis data\\DTM_32.tiff"
+outpoly = "D:\\Roba del tirocinio\\Risultati Envifate\\Confini\\target.shp"
+d = agd.read(dtm)
+polyCenter = (4200, 6000)
+polyVertex = polyCenter .+ (0, 50)
+vertexes = [ Functions.rotate_point(polyVertex, polyCenter, α) for α in 0:(360/7):360 ]
+coords = Functions.toCoords.(Ref(d), vertexes)
+Functions.create_polygon(outpoly, coords)
+
+
+
+# CREAZIONE POLYGONO AREA
+using ArchGDAL
+include(".\\Analysis\\Utils\\Functions.jl")
+const agd = ArchGDAL
 src = "C:\\Users\\Lenovo\\Documents\\GitHub\\Tirocinio\\resources\\Analysis data\\source_shapefile\\source_32.shp"
 dtm = "C:\\Users\\Lenovo\\Documents\\GitHub\\Tirocinio\\resources\\Analysis data\\DTM_32.tiff"
-out = "C:\\Users\\Lenovo\\Documents\\GitHub\\Tirocinio\\resources\\Analysis results\\test_plume.tiff"
-pr = plm.run_plume(dem_file=dtm,source_file=src,stability="a",outdoor="c",concentration=10000.0,resolution=25,wind_direction=0,wind_speed=1.0,stack_height=80.0,gas_speed=0.1,stack_diameter=1.0,gas_temperature=180.0,temperature=18.0,output_path=out)
+outpoly = "D:\\Roba del tirocinio\\Risultati Envifate\\Confini\\area.shp"
+d = agd.read(dtm)
+src_geom = agd.getgeom(collect(agd.getlayer(agd.read(src), 0))[1])
+x = agd.getx(src_geom, 0)
+y = agd.gety(src_geom, 0)
+r, c = Functions.toIndexes(d, x, y)
+polyCenter = (r + 25, c - 15)
+polyVertex = polyCenter .+ (0, 200)
+vertexes = [ Functions.rotate_point(polyVertex, polyCenter, α) for α in 0:18:360 ]
+coords = Functions.toCoords.(Ref(d), vertexes)
+Functions.create_polygon(outpoly, coords)
 
-#=  PROBLEMI
-- Il risultato è spostato verso il basso rispetto alla sorgente [V]
-- source è sull'angolo della cella source del risultato [V]
-- Il risultato sembra essere girato (Il vento va verso Est ma nell'immagine il fumo va reso Ovest)
-- L'angolo sembra non fare nulla (sembra dipendere dall'intesità del vento) [V]
-- Quando il vento è particolarmente forte  si ottengono risultati strani (le polveri vngono portate a grande distanza quindi
-    si ha il non verificarsi della condizione nelle immediate vicinanze della sorgente)
+
+
+
+
+
+using Revise
+using ArchGDAL
+include(".\\Analysis\\Aquifers.jl")
+const aqf = Aquifers
+src = "C:\\Users\\Lenovo\\Documents\\GitHub\\Tirocinio\\resources\\Analysis data\\source_shapefile\\source_32.shp"
+dtm = "C:\\Users\\Lenovo\\Documents\\GitHub\\Tirocinio\\resources\\Analysis data\\DTM_32.tiff"
+area = "D:\\Roba del tirocinio\\Risultati Envifate\\Confini\\area.shp"
+trg = "D:\\Roba del tirocinio\\Risultati Envifate\\Confini\\target.shp"
+out = "D:\\Roba del tirocinio\\Risultati Envifate\\Julia rasters\\test_aquifer3.tiff"
+#   71-43-2   Benzene   liquido   rdf_ing:0.004   rdf_inal:0.00857143   rfc:0.03
+#=
+aqf.run_leaching(
+	dem_file = dtm,
+	source_file = src,
+    aquifer_area_file = area,
+	contaminantCASNum = "108-88-3",
+	concentration = 100.0,
+	aquifer_depth = 1000.0,
+	aquifer_flow_direction = 0,
+	mean_rainfall = 20.0,
+	texture = "sand",
+    tollerance = 2,
+	time = 10,
+	orthogonal_width = 10.0,
+	mixing_zone_depth = 1580.0,
+	algorithm = :domenico,
+	output_path = out
+)
 =#
-#= POSSIBILI SOLUZIONI
-Posizione
-- Sottrarre alla Y del geotransform invece che sommare [X]
-- Usare minrow mincolumn [V]
-- Usare maxcolumn maxrow
-- Usare mincolumn maxrow
-- Invertire minRow e maxColumn sempre nel geotransform
-Angolo
-- cambiare l'angolo come se lo 0 fosse al posto di 270 [X]
-- cambiare l'angolo come se lo 0 fosse al posto di 180 [X]
-=#
+aqf.run_leaching(
+    dtm, src, area,
+    #   trg,
+    "108-88-3", 100.0,
+	1000.0, 0, 20.0, "sand",
+    tollerance = 2,
+	time = 10,
+	orthogonal_width = 10.0,
+	mixing_zone_depth = 1580.0,
+	algorithm = :domenico,
+	output_path = out
+)
 
 
 
@@ -291,47 +345,105 @@ include(".\\Analysis\\Lakes.jl")
 const lks = Lakes
 src = "C:\\Users\\Lenovo\\Documents\\GitHub\\Tirocinio\\resources\\Analysis data\\source_shapefile\\source_32.shp"
 dtm = "C:\\Users\\Lenovo\\Documents\\GitHub\\Tirocinio\\resources\\Analysis data\\DTM_32.tiff"
-out = "C:\\Users\\Lenovo\\Documents\\GitHub\\Tirocinio\\resources\\Analysis results\\test_lake.tiff"
-lr = lks.run_lake(dem_file=dtm,source_file=src,wind_direction=0,pollutant_mass=2000.0,flow_mean_speed=0.03,resolution=25,hours=10,fickian_x=4.0,fickian_y=3.0,output_path=out)
-
-
-
-
-
-
-
-d = agd.read(dtm)
-s = agd.read(src)
-
-geom = agd.getgeom( collect(agd.getlayer(s, 0))[1] )
-
-sr = agd.toWKT(agd.getspatialref(geom))
-dr = agd.getproj(d)
-
-
-
-end # module
-
-
-include(".\\Analysis\\Utils\\Functions.jl")
-using ArchGDAL
-const agd = ArchGDAL
-out = "C:\\Users\\Lenovo\\Documents\\GitHub\\Tirocinio\\resources\\Analysis results\\test_plume.tiff"
-dtm = "C:\\Users\\Lenovo\\Documents\\GitHub\\Tirocinio\\resources\\Analysis data\\DTM_32.tiff"
-src = "C:\\Users\\Lenovo\\Documents\\GitHub\\Tirocinio\\resources\\Analysis data\\source_shapefile\\source_32.shp"
-d = agd.read(dtm)
-shp = agd.read(src)
-p = agd.read(out)
-coords = Functions.toCoords(p, 52, 12)
-point = agd.getgeom(collect(agd.getlayer(shp, 0))[1])
-
-#=
-
-using GRASS_jll
-
-ccal(
-    # (<FunctionName>, <Lybrary>) 
-    (:viewshed, :spgrass7),
+area = "D:\\Roba del tirocinio\\Risultati Envifate\\Confini\\area.shp"
+trg = "D:\\Roba del tirocinio\\Risultati Envifate\\Confini\\target.shp"
+out = "D:\\Roba del tirocinio\\Risultati Envifate\\Julia rasters\\test_lake115deg.tiff"
+lks.run_lake(
+    dem_file = dtm,
+    source_file = src,
+    wind_direction = 0,
+    contaminant_mass = 2000.0,
+    tollerance = 2,
+    mean_flow_speed = 0.03,
+    resolution = 25.0,
+    hours = 10.0,
+    fickian_x = 4.0,
+    fickian_y = 3.0,
+    output_path = out
 )
 
+
+
+
+using Revise
+using ArchGDAL
+include(".\\Analysis\\Plumes.jl")
+const plm = Plumes
+src = "C:\\Users\\Lenovo\\Documents\\GitHub\\Tirocinio\\resources\\Analysis data\\source_shapefile\\source_32.shp"
+dtm = "C:\\Users\\Lenovo\\Documents\\GitHub\\Tirocinio\\resources\\Analysis data\\DTM_32.tiff"
+trg = "D:\\Roba del tirocinio\\Risultati Envifate\\Confini\\target.shp"
+out = "D:\\Roba del tirocinio\\Risultati Envifate\\Julia rasters\\test_plume2.tiff"
+plm.run_plume(
+    dem_file = dtm,
+    source_file = src,
+    stability = "a",
+    outdoor = "c",
+    concentration = 10000.0,
+    #   tollerance = 2,
+    target = trg,
+    resolution = 25.0,
+    wind_direction = 205,
+    wind_speed = 0.1,
+    stack_height = 80.0,
+    stack_diameter = 1.0,
+    gas_velocity = 0.1,
+    gas_temperature = 150.0,
+    temperature = 18.0,
+    output_path = out
+)
+
+
+
+using Revise
+using ArchGDAL
+include(".\\Analysis\\Sediments.jl")
+const sdm = Sediments
+src = "C:\\Users\\Lenovo\\Documents\\GitHub\\Tirocinio\\resources\\Analysis data\\source_shapefile\\source_32.shp"
+dtm = "C:\\Users\\Lenovo\\Documents\\GitHub\\Tirocinio\\resources\\Analysis data\\DTM_32.tiff"
+trg = "D:\\Roba del tirocinio\\Risultati Envifate\\Confini\\target.shp"
+out = "D:\\Roba del tirocinio\\Risultati Envifate\\Julia rasters\\test_sediment.tiff"
+sdm.run_sediment(
+	dem_file = dtm,
+	source_file = src,
+	resolution = 25.0,
+	mean_flow_speed = 0.03,
+	mean_depth = 13.0,
+	x_dispersion_coeff = 1.0,
+	y_dispersion_coeff = 10.0,
+	dredged_mass = 4.0,
+    tollerance = 2,
+	flow_direction = 295,
+	mean_sedimentation_velocity = 0.0359,
+	time = 1000,
+	time_intreval = 10,
+	output_path = out
+)
+
+
+
+
+using Revise
+using ArchGDAL
+include(".\\Analysis\\Noises.jl")
+const noise = Noises
+src = "C:\\Users\\Lenovo\\Documents\\GitHub\\Tirocinio\\resources\\Analysis data\\source_shapefile\\source_32.shp"
+dtm = "C:\\Users\\Lenovo\\Documents\\GitHub\\Tirocinio\\resources\\Analysis data\\DTM_32.tiff"
+out = "D:\\Roba del tirocinio\\Risultati Envifate\\Julia rasters\\test_noise2.tiff"
+noise.run_noise(
+    dem_file = dtm,
+    source_file = src,
+    temperature_K = 293.15,
+    relative_humidity = 0.2,
+    intensity_dB = 110.0,
+    frequency = 400.0,
+    output_path = out
+)
+
+#= SOSTANZE 
+NCAS         NOME                     STATO             RFD_ING          RFD_INAL             RFC
+75-01-4      Cloruro di vinile        gas("g")          0.003            0.0285714            0.1
+108-88-3     Toluene                  liquido("l")      0.08             1.42857              5.0
+1634-04-4    MTBE                     liquido("l")      3.0              0.857143             3.0
+71-43-2      Benzene                  liquido("l")      0.004            0.00857143           0.03
+96-18-4      1,2,3-Tricloropropano    liquido("l")      0.004            8.571e-5             0.0003
 =#

@@ -52,7 +52,7 @@ end
 
 
 """
-    run_lake(; dem_file::String, source_file::String, area_file::String="", wind_direction::Int64, contaminant_mass::Float64, tollerance::Int64=2,
+    run_lake(; dem_file::String, source_file::String, lake_area_file::String="", wind_direction::Int64, contaminant_mass::Float64, tollerance::Int64=2,
                mean_flow_speed::Float64, resolution::Int64, hours::Float64, fickian_x::Float64=0.05, fickian_y::Float64=0.05, λk::Float64=0.0,
                output_path::String=".\\lake_otput_model.tiff" )
 
@@ -61,7 +61,7 @@ Create and save as `output_path` a raster containing the results of model of dis
 #Arguments
 - `dem_file::String`: path to the raster containing the height of the terrain in each cell.
 - `source_file::String`: path to the shapefile containing the source point of the contaminants.
-- `area_file::String=""`: path to the shapefile containing the poligon delimiting the area for the analysis.
+- `lake_area_file::String=""`: path to the shapefile containing the poligon delimiting the area for the analysis.
 - `wind_direction::Int64`: direction of the wind as an angle in degrees.
 - `contaminant_mass::Float64`: initial mass of contaminants.
 - `tollerance::Int64=2`: value used to determine wether the concentration of pollutant in a cell is relevant.
@@ -72,20 +72,19 @@ Create and save as `output_path` a raster containing the results of model of dis
 - `fickian_x::Float64=0.05`: X direction Fickian transport coefficient.
 - `fickian_y::Float64=0.05`: Y direction Fickian transport coefficient.
 - `λk::::Float64=0.0`: First order decadiment.
-- `output_path::AbstractString=".\\lake_otput_model.tiff"`: output file path.
-"""
-function run_lake(; dem_file::String, source_file::String, area_file::String="", wind_direction::Int64, contaminant_mass::Float64, tollerance::Int64=2,
+- `output_path::String=".\\lake_otput_model.tiff"`: output file path.
+"""#=
+function run_lake(; dem_file::String, source_file::String, lake_area_file::String="", wind_direction::Int64, contaminant_mass::Float64, tollerance::Int64=2,
                     mean_flow_speed::Float64, resolution::Float64, hours::Float64, fickian_x::Float64=0.05, fickian_y::Float64=0.05, λk::Float64=0.0,
                     output_path::String=".\\lake_otput_model.tiff" )
 
     # Initialize spatial data, checking wether there is a target area to initialize or not.
-    if !isempty(area_file)
-        src_geom, trg_geom, dem = Functions.verify_and_return(source_file, area_file, dem_file)
+    if !isempty(lake_area_file)
+        src_geom, lake_geom, dem = Functions.verify_and_return(source_file, lake_area_file, dem_file)
     else
         src_geom, dem = Functions.verify_and_return(source_file, dem_file)
     end
 
-    refsys = agd.getproj(dem)
     # The cartesian angle is not the same of the raster one, specifically it's mirrored on the Y axis, the operation below ( "(360 + 180 - angle) % 360" ) fixes this.
      # Ex. 0° cartesian == 180° raster, 45° cartesian == 135° raster
     direction = (540 - wind_direction) % 360
@@ -97,11 +96,62 @@ function run_lake(; dem_file::String, source_file::String, area_file::String="",
     lake = Lake(contaminant_mass, hours*3600.0, 0.0, 0.0, fickian_x, fickian_y, velocity_x, velocity_y, direction, λk)
     # Run the function that executes the analysis chosing the version based on the presence of a target area.
      # The function returns a vector of triples rppresenting the relevant cells and their corresponding values.
-    points = !isempty(area_file) ? Functions.expand(r_source, c_source, contaminant_mass, tollerance, dem, trg_geom, lake) : 
+    points = !isempty(lake_area_file) ? Functions.expand(r_source, c_source, contaminant_mass, tollerance, dem, lake_geom, lake) : 
         Functions.expand(r_source, c_source, contaminant_mass, tollerance, dem, lake)
     # Create the resulting raster in memory.
     Functions.create_raster_as_subset(dem, points, output_path)
 end
+=#
+function run_lake(; dem_file::String, source_file::String, lake_area_file::String, contaminant_mass::Float64, wind_direction::Int64,
+                    mean_flow_speed::Float64, hours::Float64, tollerance::Int64=2, fickian_x::Float64=0.05, fickian_y::Float64=0.05, λk::Float64=0.0,
+                    output_path::String=".\\lake_otput_model.tiff" )
+    
+    if tollerance < 1 || tollerance > 4
+        throw(DomainError(tollerance, "`tollerance` value must be between 1 and 4"))
+    end
 
+    # Initialize spatial data, checking wether there is a target area to initialize or not.
+    src_geom, lake_geom, dem = Functions.verify_and_return(source_file, lake_area_file, dem_file)
+
+    # The cartesian angle is not the same of the raster one, specifically it's mirrored on the Y axis, the operation below ( "(360 + 180 - angle) % 360" ) fixes this.
+     # Ex. 0° cartesian == 180° raster, 45° cartesian == 135° raster
+    direction = (540 - wind_direction) % 360
+    angle = deg2rad(direction)
+    velocity_x = √( round( mean_flow_speed * cos(angle), digits=3 )^2 )
+    velocity_y = √( round( mean_flow_speed * sin(angle), digits=3 )^2 )
+    # Find the location of the source in the raster (as raster indexes).
+    r_source, c_source = Functions.toIndexes(dem, agd.getx(src_geom, 0), agd.gety(src_geom, 0))
+    # Create an instance of the object used to aid in the analysis process.
+    lake = Lake(contaminant_mass, hours*3600.0, 0.0, 0.0, fickian_x, fickian_y, velocity_x, velocity_y, direction, λk)
+    # Run the function that executes the analysis chosing the version based on the presence of a target area.
+     # The function returns a vector of triples rppresenting the relevant cells and their corresponding values.
+    points = Functions.expand(r_source, c_source, contaminant_mass, tollerance, dem, lake_geom, lake) 
+    # Create the resulting raster in memory.
+    Functions.create_raster_as_subset(dem, points, output_path)
+end
+
+function run_lake(; dem_file::String, source_file::String, lake_area_file::String, target_area_file::String, contaminant_mass::Float64,
+                    wind_direction::Int64, mean_flow_speed::Float64, hours::Float64, fickian_x::Float64=0.05, fickian_y::Float64=0.05, λk::Float64=0.0,
+                    output_path::String=".\\lake_otput_model.tiff" )
+                    
+    # Initialize spatial data, checking wether there is a target area to initialize or not.
+    src_geom, lake_geom, trg_geom, dem = Functions.verify_and_return(source_file, lake_area_file, target_area_file,  dem_file)
+
+    # The cartesian angle is not the same of the raster one, specifically it's mirrored on the Y axis, the operation below ( "(360 + 180 - angle) % 360" ) fixes this.
+     # Ex. 0° cartesian == 180° raster, 45° cartesian == 135° raster
+    direction = (540 - wind_direction) % 360
+    velocity_x = √( round( mean_flow_speed * cos(deg2rad(direction)), digits=3 )^2 )
+    velocity_y = √( round( mean_flow_speed * sin(deg2rad(direction)), digits=3 )^2 )
+    # Find the location of the source in the raster (as raster indexes).
+    r_source, c_source = Functions.toIndexes(dem, agd.getx(src_geom, 0), agd.gety(src_geom, 0))
+    # Create an instance of the object used to aid in the analysis process.
+    lake = Lake(contaminant_mass, hours*3600.0, 0.0, 0.0, fickian_x, fickian_y, velocity_x, velocity_y, direction, λk)
+    # Run the function that executes the analysis chosing the version based on the presence of a target area.
+    data = Functions.analyze_area(r_source, c_source, contaminant_mass, dem, lake_geom, trg_geom, lake)
+    # Create the resulting raster in memory.
+    Functions.create_raster_as_subset(dem, trg_geom, data, output_path)
+end
+
+ 
 
 end # module

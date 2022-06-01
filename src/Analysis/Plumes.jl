@@ -82,7 +82,7 @@ end
 
 
 function Functions.compute_concentration!( p::Plume )
-    if p.x > 0
+    if p.x > 0.0
         calc_σ!(p)
         calc_g!(p)
         calc_h!(p)
@@ -100,7 +100,7 @@ end
 """
     run_plume(; dem_file::String, source_file::String, stability::String, outdoor::String, concentration::Float64, tollerance::Int64=2, resolution::Int64,
                 wind_direction::Int64, wind_speed::Float64, stack_height::Float64, stack_diameter::Float64=0.0, gas_velocity::Float64=0.0, gas_temperature::Float64=0.0,
-                temperature::Float64=0.0, output_path::AbstractString=".\\plume_otput_model.tiff" )
+                temperature::Float64=0.0, output_path::String=".\\plume_otput_model.tiff" )
 
 Create and save as `output_path` a raster containing the results of model of dispersion of airborne pollutants.
 
@@ -121,10 +121,10 @@ Create and save as `output_path` a raster containing the results of model of dis
 - `gas_temperature::Float64=0.0`: absolute temperature of the gas.
 - `temperature::Float64=0.0`: absolute ambient air temperature.
 - `output_path::String=".\\plume_otput_model.tiff"`: output file path. 
-"""
+"""#=
 function run_plume(; dem_file::String, source_file::String, stability::String, outdoor::String, concentration::Float64, tollerance::Int64=2, resolution::Float64,
                      wind_direction::Int64, wind_speed::Float64, stack_height::Float64, stack_diameter::Float64=0.0, gas_velocity::Float64=0.0, gas_temperature::Float64=0.0,
-                     temperature::Float64=0.0, output_path::AbstractString=".\\plume_otput_model.tiff" )    
+                     temperature::Float64=0.0, output_path::String=".\\plume_otput_model.tiff" )    
 
     if outdoor ∉ ["c", "o"]
         throw(DomainError(outdoor, "`outdoor` must either be `\"c\"` or `\"u\"`."))
@@ -132,7 +132,6 @@ function run_plume(; dem_file::String, source_file::String, stability::String, o
 
     src_geom, dem = Functions.verify_and_return(source_file, dem_file)
 
-    refsys = agd.getproj(dem)
     # Find the location of the source in the raster (as raster indexes).
     x_source = agd.getx(src_geom, 0)
     y_source = agd.gety(src_geom, 0)
@@ -145,6 +144,57 @@ function run_plume(; dem_file::String, source_file::String, stability::String, o
     points = Functions.expand(r_source, c_source, concentration, tollerance, dem, plume)
     # Create the resulting raster in memory.
     Functions.create_raster_as_subset(dem, points, output_path)
+end
+=#
+function run_plume(; dem_file::String, source_file::String, stability::String, outdoor::String, concentration::Float64, wind_direction::Int64, wind_speed::Float64,
+                     stack_height::Float64, stack_diameter::Float64, tollerance::Int64=2, gas_velocity::Float64=0.0, gas_temperature::Float64=0.0, temperature::Float64=0.0,
+                     output_path::String=".\\plume_otput_model.tiff" )    
+
+    if tollerance < 1 || tollerance > 4
+        throw(DomainError(tollerance, "`tollerance` value must be between 1 and 4"))
+    end
+
+    if outdoor ∉ ["c", "o"]
+        throw(DomainError(outdoor, "`outdoor` must either be `\"c\"` or `\"u\"`."))
+    end
+
+    src_geom, dem = Functions.verify_and_return(source_file, dem_file)
+
+    # Find the location of the source in the raster (as raster indexes).
+    x_source = agd.getx(src_geom, 0)
+    y_source = agd.gety(src_geom, 0)
+    r_source, c_source = Functions.toIndexes(dem, x_source, y_source)
+    # Create an instance of the object used to aid in the analysis process.
+    plume = Plume( concentration, x_source, y_source, agd.getband(dem, 1)[r_source, c_source], stability, outdoor, stack_height, stack_diameter,
+                   (540 - wind_direction) % 360, wind_speed, gas_velocity, gas_temperature, temperature, 0.0 )
+    # Run the function that executes the analysis.
+     # The function returns a vector of triples rppresenting the relevant cells and their corresponding values.
+    points = Functions.expand(r_source, c_source, concentration, tollerance, dem, plume)
+    # Create the resulting raster in memory.
+    Functions.create_raster_as_subset(dem, points, output_path)
+end
+
+function run_plume(; dem_file::String, source_file::String, target_area_file::String, stability::String, outdoor::String, concentration::Float64, wind_direction::Int64,
+                     wind_speed::Float64, stack_height::Float64, stack_diameter::Float64=0.0, gas_velocity::Float64=0.0, gas_temperature::Float64=0.0,
+                     temperature::Float64=0.0, output_path::String=".\\plume_otput_model.tiff" )    
+
+    if outdoor ∉ ["c", "o"]
+        throw(DomainError(outdoor, "`outdoor` must either be `\"c\"` or `\"u\"`."))
+    end
+
+    src_geom, trg_geom, dem = Functions.verify_and_return(source_file, dem_file, target_area_file_path=target_area_file)
+
+    # Find the location of the source in the raster (as raster indexes).
+    x_source = agd.getx(src_geom, 0)
+    y_source = agd.gety(src_geom, 0)
+    r_source, c_source = Functions.toIndexes(dem, x_source, y_source)
+    # Create an instance of the object used to aid in the analysis process.
+    plume = Plume( concentration, x_source, y_source, agd.getband(dem, 1)[r_source, c_source], stability, outdoor, stack_height, stack_diameter,
+                   (540 - wind_direction) % 360, wind_speed, gas_velocity, gas_temperature, temperature, 0.0 )
+    # Run the function that executes the analysis.
+    data = Functions.analyze_area(r_source, c_source, concentration, dem, trg_geom, plume)
+    # Create the resulting raster in memory.
+    Functions.create_raster_as_subset(dem, trg_geom, data, output_path)
 end
 
 

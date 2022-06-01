@@ -1,31 +1,5 @@
+"""Module to obtain data from measurement stations located in various regions of Italy including: Alto Adige, Friuli Venezia Giulia, Lombardia, Trentino and Veneto."""
 module GroundData
-"""
-Module to obtain data from measurement stations located in various regions of Italy including: Alto Adige, Friuli Venezia Giulia, Lombardia, Trentino and Veneto.
-"""
-#=
-colonna	     |   descrizione
-------------------------------------------------------------------------------------
-uiid	     |   identificatore univoco delle stazioni di qualunque genere di misura
-------------------------------------------------------------------------------------
-parameter	 |   tipo di parametro misurato
-------------------------------------------------------------------------------------
-unit	     |   unita di misura (possibilmente SI)
-------------------------------------------------------------------------------------
-value	     |   valore misurato
-------------------------------------------------------------------------------------
-date	     |   anno mese giorno ora (UTM)
-------------------------------------------------------------------------------------
-longitude	 |   longitudine della stazione
-------------------------------------------------------------------------------------
-latitude	 |   latitudine della stazione
-------------------------------------------------------------------------------------
-quote	     |   quota stazione || quota stazione più quota misura per il vento
-------------------------------------------------------------------------------------
-validation	 |   bool (già segnalato dalla stazione)
-------------------------------------------------------------------------------------
-note	     |   errori e outlayers? altro?
-------------------------------------------------------------------------------------
-=#
 
 
 
@@ -180,8 +154,6 @@ function generateUuidsTable()
     return df
 end
 
-#   uuids = generateUuidsTable()
-
 
 
 """
@@ -248,9 +220,6 @@ function getGroundData( type::Symbol=:METEO, regions::Region... )
     return df, mdf
 end
 
-#   resmt, mresmt = getGroundData( :METEO, AA, FVG, L, T, V )
-#   resaq, mresaq = getGroundData( :AIRQUALITY, AA, FVG, L, T, V )
-
 
 
 """
@@ -271,55 +240,6 @@ function saveGroundData( path::AbstractString, data::DataFrame; overwrite::Bool=
     CSV.write( path, data, append=condition )
 end
 
-#    path = *( @__DIR__, "\\..\\Dati stazioni")
-#    saveGroundData( path*"\\data.csv", resmt )
-#    saveGroundData( path*"\\missing_data.csv", mresmt )
-
 
 
 end # module
-
-
-
-using Plots
-using Shapefile
-using GeoStats
-
-const shp = Shapefile
-
-
-
-stations = shp.Table("C:\\Users\\Lenovo\\Documents\\GitHub\\Tirocinio\\resources\\Analysis data\\Stazioni_Veneto\\Stazioni_Veneto.shp")
-comuni = shp.Table("C:\\Users\\Lenovo\\Documents\\GitHub\\Tirocinio\\resources\\Analysis test data\\c0104011_Comuni\\c0104011_Comuni.shp")
-
-
-resmt, mresmt = getGroundData( :METEO, AA, FVG, L, T, V )
-resaq, mresaq = getGroundData( :AIRQUALITY, AA, FVG, L, T, V )
-
-path = "C:\\Users\\Lenovo\\Documents\\GitHub\\Tirocinio\\resources\\Ground stations data\\25-03-22 - Post incendio"
-saveGroundData(path*"\\meteo_data.csv", resmt)
-saveGroundData(path*"\\airquality_data.csv", resaq)
-saveGroundData(path*"\\airquality_data_missing.csv", mresaq)
-
-unique(resmt.parameter)
-
-# All relative humidity measurements
-measurements = resmt[ resmt.parameter .== "Umidità relativa", : ]
-# All the measurement's values
-values = ( humidity = measurements.value ./ 100, )
-# All the coordinates of the measurements
-coord = Tuple{Float64, Float64}[ (c[1], c[2]) for c in eachrow(measurements[:, [:longitude, :latitude]]) ]
-# Georeference data
-D = georef(values, coord)
-# Estimation domain
-G = CartesianGrid(100, 100)
-# Estimation problem
-problem = EstimationProblem(D, G, :humidity)
-# Solver from the list of solvers
-solver = Kriging( :val => ( variogram = GaussianVariogram(range=35.0), ) )
-# Solving problem
-solution = solve(problem, solver)
-# Solution plot
-contourf(solution, clabels=true)
-
-=#

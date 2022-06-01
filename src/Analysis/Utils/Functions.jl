@@ -44,7 +44,7 @@ The module should also provide the following functions:
     the function should return the concentration of pollutant in a single cell at the coordinates given by `x`, `y`
     and possibly `z` fields.
 It may also provide the following function:
-- `check_result( value::Float64, numCAS::String )`:given the concentration value for a cell and the CAS number of the pollutant, returns true if said value is abnormal
+- `check_result( value::Float64, numCAS::AbstractString )`:given the concentration value for a cell and the CAS number of the pollutant, returns true if said value is abnormal
     and or potentially dangerous.
 """
 abstract type AbstractAnalysisObject end
@@ -60,7 +60,19 @@ Base.setindex!( collection::Raster{T}, v, x::Float64, y::Float64, ) where {T} = 
 Base.convert(::Type{Int64}, n::AbstractFloat) = round(Int64, n)
 
 
+
 ArchGDAL.getgeotransform( raster::GeoArrays.GeoArray ) = [raster.f.translation[1], raster.f.linear[1, :]..., raster.f.translation[2], raster.f.linear[2, :]...]
+
+
+
+"""
+    rotate_point( xp::T, yp::T, xc::T, yc::T, θ::Int64 ) where {T <: Number}
+
+Return the coordinates obtained from rotating point (`xp`, `yp`) by an angle `Θ` around point (`xc`, `yc`).
+"""
+rotate_point( xp::T1, yp::T1, xc::T1, yc::T1, θ::T2 ) where {T1 <: Real, T2 <: Real} = θ == 0 ? (xp, yp) : round.(Int64, ( (xp - xc)cos(deg2rad(θ)) - (yp - yc)sin(deg2rad(θ)) + xc, 
+                                                                                                               (xp - xc)sin(deg2rad(θ)) + (yp - yc)cos(deg2rad(θ)) + yc ))
+rotate_point( point::Tuple{T1, T1}, center::Tuple{T1, T1}, Θ::T2 ) where {T1 <: Real, T2 <: Real} = rotate_point(point..., center..., Θ)
 
 
 
@@ -124,7 +136,7 @@ function create_raster_as_subset( origin_raster::ArchGDAL.IDataset, points_of_in
    maxR = maximum( point -> point[1], points_of_interest )
    # Define various attributes of the raster, including the matrix holding the relevant cells' values, its reference system and others.
    geotransform = agd.getgeotransform(origin_raster)
-   geotransform[[1, 4]] = toCoords(origin_raster, minR, points_of_interest[1][2])
+   geotransform[[1, 4]] .= toCoords(origin_raster, minR, points_of_interest[1][2])
    noData = Float32(agd.getnodatavalue(agd.getband(origin_raster, 1)))
    data = fill(
       noData,
@@ -135,6 +147,17 @@ function create_raster_as_subset( origin_raster::ArchGDAL.IDataset, points_of_in
    fill_data_matrix!(data, points_of_interest, minR, maxR)
    # Create the raster in memory.
    writeRaster(data, agd.getdriver("GTiff"), geotransform, agd.getproj(origin_raster), noData, output_file_path)
+end
+
+function create_raster_as_subset( origin_raster::ArchGDAL.IDataset, target_area::ArchGDAL.IGeometry{ArchGDAL.wkbPolygon}, data_matrix::AbstractMatrix{T}, output_file_path::AbstractString ) where {T <: Float32}
+    # Define various attributes of the raster, including the matrix holding the relevant cells' values, its reference system and others.
+    boundingbox = agd.envelope(target_area)
+    geotransform = agd.getgeotransform(origin_raster)
+    geotransform[1] = boundingbox.MinX
+    geotransform[4] = boundingbox.MaxY
+    noData = Float32(agd.getnodatavalue(agd.getband(origin_raster, 1)))
+    # Create the raster in memory.
+    writeRaster(data_matrix, agd.getdriver("GTiff"), geotransform, agd.getproj(origin_raster), noData, output_file_path)
 end
 
 
@@ -184,98 +207,234 @@ end
 """
     toCoords( dtm::ArchGDAL.AbstractDataset, r::Int64, c::Int64 )
 
-Convert convert the indexes `r` and `c` to the coordinates of the respective cell in `dtm` raster
+Convert the indexes `r` and `c` to the coordinates of the respective cell in `dtm` raster
 """
+toCoords( geotransform::Vector{Float64}, r::Int64, c::Int64 ) = (geotransform[1], geotransform[4]) .+ ( r .* (geotransform[2], geotransform[5]) ) .+ ( c .* (geotransform[3], geotransform[6]) )
+
 function toCoords( dtm::ArchGDAL.AbstractDataset, r::Int64, c::Int64 )
     gtf = agd.getgeotransform(dtm)
- #  return gtf[[1,4]] .+ ( (r + 1/2) .* gtf[[2,5]] ) .+ ( (c + 1/2) .* gtf[[3,6]] )
-    return gtf[[1,4]] .+ ( r .* gtf[[2,5]] ) .+ ( c .* gtf[[3,6]] )
-end
-
-function toCoords( geotransform::Vector{Float64}, r::Int64, c::Int64 )
-    return geotransform[[1,4]] .+ ( (r + 1/2) .* geotransform[[2,5]] ) .+ ( (c + 1/2) .* geotransform[[3,6]] )
+    return toCoords(gtf, r, c)
 end
 
 function toCoords( dtm::Rasters.Raster{T}, r::Int64, c::Int64 ) where {T}
     return dtm.dims[1][r], dtm.dims[2][c]
 end
 
+function toCoords( dtm::ArchGDAL.AbstractDataset, indexes::Tuple{T, T} ) where {T <: Int64}
+    return toCoords(dtm, indexes...)
+end
+
+function toCoords( geotransform::Vector{T1}, indexes::Tuple{T2, T2} ) where {T1 <: Float64, T2 <: Int64}
+    return toCoords(geotransform, indexes...)
+end
+
+function toCoords( dtm::Rasters.Raster{T}, indexes::Tuple{T, T} ) where {T}
+    return toCoords(dtm, indexes...)
+end
+
+
 
 """
     toIndexes( dtm::ArchGDAL.AbstractDataset, x::Float64, y::Float64 )
 
-Convert coordinates to the indexes of the respective cell in `dtm` raster
+Convert X and Y coordinates of a point to the indexes of the respective cell in `dtm` raster.
 """
+toIndexes( geotransform::Vector{Float64}, coords::Tuple{T, T} ) where {T <: Float64} = @. round( Int64, ( ( coords - (geotransform[1], geotransform[4]) ) / (geotransform[2], geotransform[6]) ) )
+
+toIndexes( geotransform::Vector{Float64}, x::Float64, y::Float64 ) = toIndexes(geotransform, (x, y))
+
+function toIndexes( dtm::ArchGDAL.AbstractDataset, coords::Tuple{T, T} ) where {T <: Float64}
+    gtf = agd.getgeotransform(dtm)
+    return toIndexes(gtf, coords)
+end
+
 function toIndexes( dtm::ArchGDAL.AbstractDataset, x::Float64, y::Float64 )
     gtf = agd.getgeotransform(dtm)
-    return round.( Int64, ( ( (x, y) .- gtf[[1,4]] ) ./ gtf[[2,6]] ) )
-end
-
-function toIndexes( geotransform::Vector{Float64}, x::Float64, y::Float64 )
-    return round.( Int64, ( ( (x, y) .- geotransform[[1,4]] ) ./ geotransform[[2,6]] ) )
+    return toIndexes(gtf, (x, y))
 end
 
 
 
 """
-   verify_and_return( source_file_path::String, raster_file_path::String )
+    create_point( output_file_path::AbstractString, x::AbstractFloat, y::AbstractFloat )
+
+Create a vectorial data file, with point geometry, as `output_file_path` from the X and Y coordinates of the point.
+"""
+function create_point( output_file_path::AbstractString, x::AbstractFloat, y::AbstractFloat )
+    agd.create(
+	    output_file_path,
+	    driver = agd.getdriver("ESRI Shapefile")
+    ) do ds
+	    agd.createlayer(
+		    geom = agd.wkbPoint,
+    	    spatialref = agd.importEPSG(32632)
+	    ) do layer
+		    agd.createfeature(layer) do feature
+    		    agd.setgeom!( feature, agd.createpoint(x, y) )
+		    end
+		    agd.copy(layer, dataset=ds)
+	    end
+    end
+    return nothing
+end
+
+function create_point( output_file_path::AbstractString, coords::Tuple{T, T} ) where {T <: AbstractFloat}
+    create_point(output_file_path, coords[1], coords[2])
+end
+
+
+
+"""
+    create_polygon( output_file_path::AbstractString, coords::AbstractVector{Tuple{T, T}} ) where {T <: AbstractFloat}
+
+Create a vectorial data file, with polygon geometry, as `output_file_path` from the X and Y coordinates of the vertexes of the polygon.
+"""
+function create_polygon( output_file_path::AbstractString, coords::AbstractVector{Tuple{T, T}} ) where {T <: AbstractFloat}
+    agd.create(
+        output_file_path,
+        driver = agd.getdriver("ESRI Shapefile")
+    ) do ds
+        agd.createlayer(
+            geom = agd.wkbPolygon,
+            spatialref = agd.importEPSG(32632)
+        ) do layer
+            agd.createfeature(layer) do feature
+                agd.setgeom!( feature, agd.createpolygon(coords) )
+            end
+            agd.copy(layer, dataset=ds)
+        end
+    end
+    return nothing
+end
+
+function create_polygon( output_file_path::AbstractString, coords::Vararg{Tuple{T, T}} ) where {T <: AbstractFloat}
+    vect = colect(coords)
+    create_polygon(output_file_path, vect)
+end
+
+function create_polygon( output_file_path::AbstractString, xs::AbstractVector{T}, ys::AbstractVector{T} ) where {T <: AbstractFloat}
+    vect = [ (x, y) for (x, y) in zip(xs, ys) ]
+    create_polygon(output_file_path, vect)
+end
+
+
+
+"""
+    check_and_return_spatial_data( source_file_path::AbstractString, raster_file_path::AbstractString )
 
 Check wether the shapefile pointed at by the `source_file_path` is valid as source point and the raster pointed at by `raster_file_path` has the
 same coordinate reference system(CRS) as the source, if so return the geometry of the source and the raster, otherwise throw a `DomainError`.
 """
-function verify_and_return( source_file_path::String, raster_file_path::String )
-   src_geom = agd.getgeom(collect(agd.getlayer(agd.read(source_file_path), 0))[1])
-
-   if agd.geomdim(src_geom) != 0
-      throw(DomainError(source_file_path, "`source` must be a point"))
-   end
-
-   raster = agd.read(raster_file_path)
-
-   if agd.toWKT(agd.getspatialref(src_geom)) != agd.getproj(raster)
-      throw(DomainError("The reference systems are not uniform. Aborting analysis."))
-   end
-
-   return src_geom, raster
+function check_and_return_spatial_data( source_file_path::AbstractString, raster_file_path::AbstractString; target_area_file_path::String="" )
+ # Source check
+    src_geom = agd.getgeom(collect(agd.getlayer(agd.read(source_file_path), 0))[1])
+    if agd.geomdim(src_geom) != 0
+        throw(DomainError(source_file_path, "`source` must be a point"))
+    end
+ # raster check
+    raster = agd.read(raster_file_path)
+    if agd.toWKT(agd.getspatialref(src_geom)) != agd.getproj(raster)
+        throw(DomainError("The reference systems are not uniform. Aborting analysis."))
+    end
+ # Analysis target area check
+    if isempty(target_area_file_path)
+        return src_geom, raster
+    else
+        trg_geom = agd.getgeom(collect(agd.getlayer(agd.read(target_area_file_path), 0))[1])
+        if agd.geomdim(trg_geom) != 2
+            throw(DomainError(target_area_file_path, "The target area must be a polygon."))
+        end
+        if agd.toWKT(agd.getspatialref(trg_geom)) != agd.toWKT(agd.getspatialref(src_geom))
+            throw(DomainError("The reference systems are not uniform."))
+        end
+        return src_geom, trg_geom, dem
+    end
 end
 
 """
-   verify_and_return( source_file_path::String, target_area_file_path::String, raster_file_path::String )
+    check_and_return_spatial_data( source_file_path::AbstractString, limit_area_file_path::AbstractString, raster_file_path::AbstractString )
 
-Check wether the shapefile pointed at by `source_file_path` is valid as source point, the target area shapefile pointed at by `target_area_file_path` is a valid
-target area and the coordinate reference system(CRS) is the same for all files.
-If all the conditions are met return the geometry of the source, that of the target area and the raster, otherwise throw a `DomainError`.
+Check that the validity of the input files and return the geometries, for shapefiles, or raster, for rasters.
+Throws `DomainError` in case of invalid input files.
+
+#Arguments
+- `source_file_path::AbstractString`: source of pollution, must be a point.
+- `limit_area_file_path::AbstractString`: polygon defining the naturally limited area for the analysis, for example a lake or an aquifer.
+- `raster_file_path::AbstractString`: raster file holding terrain data.
 """
-function verify_and_return( source_file_path::String, target_area_file_path::String, raster_file_path::String )
+function check_and_return_spatial_data( source_file_path::AbstractString, limit_area_file_path::AbstractString, raster_file_path::AbstractString )
+ # Source check
+    src_geom = agd.getgeom(collect(agd.getlayer(agd.read(source_file_path), 0))[1])
+    if agd.geomdim(src_geom) != 0
+        throw(DomainError(source_file_path, "The source must be a point"))
+    end
+ # Limit area check
+    lmt_geom = agd.getgeom(collect(agd.getlayer(agd.read(limit_area_file_path), 0))[1])
+    if agd.geomdim(lmt_geom) != 2
+        throw(DomainError(area_file_path, "The limit area must be a polygon."))
+    end
+    if !agd.contains(lmt_geom, src_geom)
+        throw(DomainError("The limit area polygon must contain the source."))
+    end
+ # Coordinate reference system check
+    refsys = agd.toWKT(agd.getspatialref(src_geom))
+    if agd.toWKT(agd.getspatialref(lmt_geom)) != refsys
+        throw(DomainError("The reference systems are not uniform."))
+    end
+ # Raster check
+    raster = agd.read(raster_file_path)
+    if agd.getproj(raster) != refsys
+        throw(DomainError("The reference systems are not uniform."))
+    end
+    return src_geom, lmt_geom, raster
+end
+
+"""
+    check_and_return_spatial_data( source_file_path::AbstractString, limit_area_file_path::AbstractString, target_area_file_path::AbstractString, raster_file_path::AbstractString )
+
+Check that the validity of the input files and return the geometries, for shapefiles, or raster, for rasters.
+Throws `DomainError` in case of invalid input files.
+
+#Arguments
+- `source_file_path::AbstractString`: source of pollution, must be a point.
+- `limit_area_file_path::AbstractString`: polygon defining the naturally limited area for the analysis, for example a lake or an aquifer.
+- `target_area_file_path::AbstractString`: polygon reppresenting the area to be analyzed, should be smaller than the limit area and must at least intersect it.
+- `raster_file_path::AbstractString`: raster file holding terrain data.
+"""
+function check_and_return_spatial_data( source_file_path::AbstractString, limit_area_file_path::AbstractString, target_area_file_path::AbstractString, raster_file_path::AbstractString )
    
-   src_geom = agd.getgeom(collect(agd.getlayer(agd.read(source_file_path), 0))[1])
-
-   if agd.geomdim(src_geom) != 0
-      throw(DomainError(source_file_path, "The source must be a point"))
-   end
-
-   trg_geom = agd.getgeom(collect(agd.getlayer(agd.read(target_area_file_path), 0))[1])
-   
-   if agd.geomdim(trg_geom) != 2
-      throw(DomainError(target_area_file_path, "The target area must be a polygon."))
-   end
-   if !agd.contains(trg_geom, src_geom)
-      throw(DomainError("The target area polygon must contain the source."))
-   end
-
-   refsys = agd.getspatialref(src_geom)
-
-   if agd.getspatialref(trg_geom) != refsys
-      throw(DomainError("The reference systems are not uniform."))
-   end
-
-   raster = agd.read(raster_file_path)
-
-   if agd.getproj(raster) != agd.toWKT(refys)
-      throw(DomainError("The reference systems are not uniform."))
-   end
-
-   return src_geom, trg_geom, raster
+ # Source check
+    src_geom = agd.getgeom(collect(agd.getlayer(agd.read(source_file_path), 0))[1])
+    if agd.geomdim(src_geom) != 0
+        throw(DomainError(source_file_path, "The source must be a point"))
+    end
+ # Area check
+    lmt_geom = agd.getgeom(collect(agd.getlayer(agd.read(limit_area_file_path), 0))[1])
+    if agd.geomdim(lmt_geom) != 2
+        throw(DomainError(limit_area_file_path, "The limit area must be a polygon."))
+    end
+    if !agd.contains(lmt_geom, src_geom)
+        throw(DomainError("The limit area polygon must contain the source."))
+    end
+ # Analysis target area check
+    trg_geom = agd.getgeom(collect(agd.getlayer(agd.read(target_area_file_path), 0))[1])
+    if agd.geomdim(trg_geom) != 2
+        throw(DomainError(target_area_file_path, "The target area must be a polygon."))
+    end
+    if !agd.contains(lmt_geom, trg_geom) && !agd.intersects(lmt_geom, trg_geom)
+        throw(DomainError("The target area must overlap at least partially with the limit area polygon"))
+    end
+ # Coordinate reference systems check
+    refsys = agd.toWKT(agd.getspatialref(src_geom))
+    if agd.toWKT(agd.getspatialref(lmt_geom)) != refsys || agd.toWKT(agd.getspatialref(trg_geom)) != refsys
+        throw(DomainError("The reference systems are not uniform."))
+    end
+ # Raster check
+    raster = agd.read(raster_file_path)
+    if agd.getproj(raster) != refsys
+        throw(DomainError("The reference systems are not uniform."))
+    end
+    return src_geom, lmt_geom, trg_geom, raster
 end
 
 
@@ -301,28 +460,29 @@ result vector, otherwise a check is operated to see if the cell's concentration 
 indexes to the queue, if not the algorithm simply procedes to the following cell, the cyclecontinues untill there are no more cells in the queue.
 """
 function expand( src_r::Int64, src_c::Int64, concentration::Float64, tollerance::Int64, dem::ArchGDAL.IDataset, object::AbstractAnalysisObject )    
+    
     raster::ArchGDAL.IRasterBand{Float32} = agd.getband(dem, 1)
- # Limits for rows and columns.
+    # Limits for rows and columns.
     max_r, max_c = size(raster)
- # Value reppresenting a lack of data for a given cell.
+    # Value reppresenting a lack of data for a given cell.
     noData = something(Float32(agd.getnodatavalue(raster)), -9999.0f0)
- # Vector of the cells with a valid concentration of pollutant.
+    # Vector of the cells with a valid concentration of pollutant.
     points = Tuple{Int64, Int64, Float64}[]
- # If the cell identified by (`src_r`, `src_c`) is within the raster bounds and has an actual value.
+    # If the cell identified by (`src_r`, `src_c`) is within the raster bounds and has an actual value.
     @inbounds if 1 <= src_r <= max_r && 1 <= src_c <= max_c && raster[src_r, src_c] != noData
         valid_magnitude = -Inf
-     # Coordinates of the source.
+        # Coordinates of the source.
         src_coords = toCoords(dem, src_r, src_c)
-     # Direction of flow angle in radians.
+        # Direction of flow angle in radians.
         dir = deg2rad(object.direction)
-     # Sine and cosine of the angle.
+        # Sine and cosine of the angle.
         sindir = sin(dir)
         cosdir = cos(dir)
-     # Vector of displacements between a cell and its adjacent ones.
+        # Vector of displacements between a cell and its adjacent ones.
         disp = [(1, 0), (0, 1), (-1, 0), (0, -1)]
-     # Vector of cells that have already been checked and found with an inadequate result.
+        # Vector of cells that have already been checked and found with an inadequate result.
         visited = Tuple{Int64, Int64}[]
-     # Vector of cells that still need to be checked, initially filled with the adjacents of the source.
+        # Vector of cells that still need to be checked, initially filled with the adjacents of the source.
         new_points = Tuple{Int64, Int64, Float64}[]
         for (Δr, Δc) in disp
             1 <= src_r + Δr <= max_r &&
@@ -330,31 +490,31 @@ function expand( src_r::Int64, src_c::Int64, concentration::Float64, tollerance:
             raster[src_r + Δr, src_c + Δc] != noData &&
             push!(new_points, (src_r + Δr, src_c + Δc, 0.0))
         end
-     # Add source point to the vector of points.
+        # Add source point to the vector of points.
         push!(points, (src_r, src_c, concentration))
-     # While there are still unchecked cells.
+        # While there are still unchecked cells.
         while !isempty(new_points)
-         # Variable used to take into account the result of a cell's predecessor (used for stop condition).
+            # Variable used to take into account the result of a cell's predecessor (used for stop condition).
             last = new_points[1][3]
-         # Update position in `object`
+            # Update position in `object`
             Δx, Δy = src_coords .- toCoords(dem, new_points[1][1], new_points[1][2])
             object.x = (Δx * cosdir) - (Δy * sindir)
             object.y = (Δx * sindir) + (Δy * cosdir)
             if :z in fieldnames(typeof(object))
                object.z = raster[new_points[1][1], new_points[1][2]]
             end
-         # Compute the resulting concentration for the current cell.
+            # Compute the resulting concentration for the current cell.
             result = compute_concentration!(object)
             magnitude = round(log10(result))
-         # Check if the result's value is not valid.
+            # Check if the result's value is not valid.
             if result == 0.0 || magnitude < valid_magnitude - tollerance
-             # Add the cell to the vector of already visited cells.
+                # Add the cell to the vector of already visited cells.
                 push!(visited, new_points[1][1:2])
-             # If the result is less than that of the preceding cell skip to the next cell to be checked. 
+                # If the result is less than that of the preceding cell skip to the next cell to be checked. 
                 if result > last
                     last = result
                 else
-                 # Remove the first element of the array.
+                    # Remove the first element of the array.
                     deleteat!(new_points, 1)
                     continue
                 end
@@ -364,126 +524,215 @@ function expand( src_r::Int64, src_c::Int64, concentration::Float64, tollerance:
                 end
                 push!(points, (new_points[1][1], new_points[1][2], result))
             end
-         # Add the adjacent cells of the current one to the cells to be checked.
+            # Add the adjacent cells of the current one to the cells to be checked.
             for (Δr, Δc) in disp
-             # Check the new cell is within the raster bounds
-                1 <= new_points[1][1] + Δr <= max_r &&
-                1 <= new_points[1][2] + Δc <= max_c &&
-             # Check the cell has an actual value
-                raster[new_points[1][1] + Δr, new_points[1][2] + Δc] != noData &&
-             # Check that it has not been encountered yet.
-                all(isnothing.(findfirst.( x -> x[1] == new_points[1][1] + Δr && x[2] == new_points[1][2] + Δc, [view(points, :), view(new_points, :)] ))) &&
-                (new_points[1][1] + Δr, new_points[1][2] + Δc) ∉ visited &&
-             # Add it to `new_points`.
-                push!(new_points, (new_points[1][1] + Δr, new_points[1][2] + Δc, last))
+                if ( # Check that the new cell: is within the raster bounds, has an actual value, has not been encountered yet.
+                    1 <= new_points[1][1] + Δr <= max_r && 1 <= new_points[1][2] + Δc <= max_c &&
+                    raster[new_points[1][1] + Δr, new_points[1][2] + Δc] != noData &&
+                    all(isnothing.(findfirst.( x -> x[1] == new_points[1][1] + Δr && x[2] == new_points[1][2] + Δc, [view(points, :), view(new_points, :)] ))) &&
+                    (new_points[1][1] + Δr, new_points[1][2] + Δc) ∉ visited
+                )
+                    # Add it to `new_points`.
+                    push!(new_points, (new_points[1][1] + Δr, new_points[1][2] + Δc, last))
+                end
             end
-         # Remove the first element of the array.
+            # Remove the first element of the array.
             deleteat!(new_points, 1)
         end
     else
-      println("\n\nThe indexes of the source must correspond to a cell inside raster `dem`\n")
-   end
-   return points
+        println("\n\nThe indexes of the source must correspond to a cell inside raster `dem`\n")
+    end
+    return points
 end
 
 function expand( src_r::Int64, src_c::Int64, concentration::Float64, tollerance::Int64, dem::ArchGDAL.AbstractDataset, area::ArchGDAL.IGeometry{ArchGDAL.wkbPolygon},
                  object::AbstractAnalysisObject )
-   raster = agd.getband(dem, 1)
- # Limits for rows and columns.
-   max_r, max_c = size(raster)
- # Value reppresenting a lack of data for a given cell.
-   noData = agd.getnodatavalue(raster)
- # Vector of the cells with a valid concentration of pollutant.
-   points = Tuple{Int64, Int64, Float64}[]
- # If the cell identified by (`src_r`, `src_c`) is within the raster bounds and has an actual value.
-   @inbounds if 1 <= src_r <= max_r && 1 <= src_c <= max_c && raster[src_r, src_c] != noData
-      valid_magnitude = -Inf
-    # Coordinates of the source.
-      src_coords = toCoords(dem, src_r, src_c)
-    # Direction of flow angle in radians.
-      dir = deg2rad(object.direction)
-    # Sine and cosine of the angle.
-      sindir = sin(dir)
-      cosdir = cos(dir)
-    # Vector of displacements between a cell and its adjacent ones.
-      disp = [(1, 0), (0, 1), (-1, 0), (0, -1)]
-    # Vector of cells that have already been checked and found with an inadequate result.
-      visited = Tuple{Int64, Int64}[]
-    # Vector of cells that still need to be checked, initially filled with the adjacents of the source.
-      new_points = Tuple{Int64, Int64, Float64}[]
-      for (Δr, Δc) in disp
-         1 <= src_r + Δr <= max_r &&
-         1 <= src_c + Δc <= max_c &&
-         raster[src_r + Δr, src_c + Δc] != noData &&
-         push!(new_points, (src_r + Δr, src_c + Δc, 0.0))
-      end
-    # Add source point to the vector of points.
-      push!(points, (src_r, src_c, concentration))
-    # While there are still unchecked cells.
-      while !isempty(new_points)
-       # Coordinates of the current cell.
-         coords = toCoords(dem, new_points[1][1], new_points[1][2])
-       # If the polygon `area` doesn't contain the current cell skip to the next one.
-         if !agd.contains(area, agd.createpoint(coords...))
-          # Remove the first element of the array.
-            deleteat!(new_points, 1)
-            continue
-         end
-       # Variable used to take into account the result of a cell's predecessor (used for stop condition).
-         last = new_points[1][3]
-       # Update position in `object`
-         Δx, Δy = src_coords .- coords
-         object.x = (Δx * cosdir) - (Δy * sindir)
-         object.y = (Δx * sindir) + (Δy * cosdir)
-         if :z in fieldnames(typeof(object))
-            object.z = raster[new_points[1][1], new_points[1][2]]
-         end
-       # Compute the resulting concentration for the current cell.
-         result = compute_concentration!(object)
-         magnitude = round(log10(result))
-       # Check if the result's value is not valid.
-         if result == 0 || magnitude < valid_magnitude - tollerance
-          # Add the cell to the vector of already visited cells.
-            push!(visited, new_points[1][1:2])
-          # If the result is less than that of the preceding cell skip to the next cell to be checked. 
-            if result > last
-               last = result
+
+    raster::ArchGDAL.IRasterBand{Float32} = agd.getband(dem, 1)
+    # Limits for rows and columns.
+    max_r, max_c = size(raster)
+    # Value reppresenting a lack of data for a given cell.
+    noData = agd.getnodatavalue(raster)
+    # Vector of the cells with a valid concentration of pollutant.
+    points = Tuple{Int64, Int64, Float64}[]
+    # If the cell identified by (`src_r`, `src_c`) is within the raster bounds and has an actual value.
+    @inbounds if 1 <= src_r <= max_r && 1 <= src_c <= max_c && raster[src_r, src_c] != noData
+        valid_magnitude = -Inf
+        # Coordinates of the source.
+        src_coords = toCoords(dem, src_r, src_c)
+        # Direction of flow angle in radians.
+        dir = deg2rad(object.direction)
+        # Sine and cosine of the angle.
+        sindir = sin(dir)
+        cosdir = cos(dir)
+        # Vector of displacements between a cell and its adjacent ones.
+        disp = [(1, 0), (0, 1), (-1, 0), (0, -1)]
+        # Vector of cells that have already been checked and found with an inadequate result.
+        visited = Tuple{Int64, Int64}[]
+        # Vector of cells that still need to be checked, initially filled with the adjacents of the source.
+        new_points = Tuple{Int64, Int64, Float64}[]
+        for (Δr, Δc) in disp
+           1 <= src_r + Δr <= max_r &&
+           1 <= src_c + Δc <= max_c &&
+           raster[src_r + Δr, src_c + Δc] != noData &&
+           push!(new_points, (src_r + Δr, src_c + Δc, 0.0))
+        end
+        # Add source point to the vector of points.
+        push!(points, (src_r, src_c, concentration))
+        # While there are still unchecked cells.
+        while !isempty(new_points)
+            # Coordinates of the current cell.
+            coords = toCoords(dem, new_points[1][1], new_points[1][2])
+            # If the polygon `area` doesn't contain the current cell skip to the next one.
+            if !agd.contains(area, agd.createpoint(coords...))
+                # Remove the first element of the array.
+                deleteat!(new_points, 1)
+                continue
+            end
+            # Variable used to take into account the result of a cell's predecessor (used for stop condition).
+            last = new_points[1][3]
+            # Update position in `object`
+            Δx, Δy = src_coords .- coords
+            object.x = (Δx * cosdir) - (Δy * sindir)
+            object.y = (Δx * sindir) + (Δy * cosdir)
+            if :z in fieldnames(typeof(object))
+                object.z = raster[new_points[1][1], new_points[1][2]]
+            end
+            # Compute the resulting concentration for the current cell.
+            result = compute_concentration!(object)
+            magnitude = round(log10(result))
+            # Check if the result's value is not valid.
+            if result == 0 || magnitude < valid_magnitude - tollerance
+                # Add the cell to the vector of already visited cells.
+                push!(visited, new_points[1][1:2])
+                # If the result is less than that of the preceding cell skip to the next cell to be checked. 
+                if result > last
+                    last = result
+                else
+                    # Remove the first element of the array.
+                    deleteat!(new_points, 1)
+                    continue
+                end
             else
-             # Remove the first element of the array.
-               deleteat!(new_points, 1)
-               continue
+                if magnitude > valid_magnitude
+                    valid_magnitude = magnitude
+                end
+                push!(points, (new_points[1][1], new_points[1][2], result))
             end
-         else
-            if magnitude > valid_magnitude
-               valid_magnitude = magnitude
+            # Add the adjacent cells of the current one to the cells to be checked.
+            for (Δr, Δc) in disp
+                if ( # Check that the new cell: is within the raster bounds, has an actual value, has not been encountered yet.
+                    1 <= new_points[1][1] + Δr <= max_r && 1 <= new_points[1][2] + Δc <= max_c &&
+                    raster[new_points[1][1] + Δr, new_points[1][2] + Δc] != noData &&
+                    all(isnothing.(findfirst.( x -> x[1] == new_points[1][1] + Δr && x[2] == new_points[1][2] + Δc, [view(points, :), view(new_points, :)] ))) &&
+                    (new_points[1][1] + Δr, new_points[1][2] + Δc) ∉ visited
+                )
+                    # Add it to `new_points`.
+                    push!(new_points, (new_points[1][1] + Δr, new_points[1][2] + Δc, last))
+                end
             end
-            push!(points, (new_points[1][1], new_points[1][2], result))
-         end
-       # Add the adjacent cells of the current one to the cells to be checked.
-         for (Δr, Δc) in disp
-          # Check the new cell is within the raster bounds
-            1 <= new_points[1][1] + Δr <= max_r &&
-            1 <= new_points[1][2] + Δc <= max_c &&
-          # Check the cell has an actual value
-            raster[new_points[1][1] + Δr, new_points[1][2] + Δc] != noData &&
-          # Check that it has not been encountered yet.
-            all(isnothing.(findfirst.( x -> x[1] == new_points[1][1] + Δr && x[2] == new_points[1][2] + Δc, [view(points), view(new_points)] ))) &&
-            (new_points[1][1] + Δr, new_points[1][2] + Δc) ∉ visited &&
-          # Add it to `new_points`.
-            push!(new_points, (new_points[1][1] + Δr, new_points[1][2] + Δc, last))
-         end
-       # Remove the first element of the array.
-         deleteat!(new_points, 1)
-      end
-   else
-      println("\n\nThe indexes of the source must correspond to a cell inside raster `dem`\n")
-   end
-   return points
+            # Remove the first element of the array.
+            deleteat!(new_points, 1)
+        end
+    else
+        println("\n\nThe indexes of the source must correspond to a cell inside raster `dem`\n")
+    end
+    return points
 end
 
 
 
+"""
+    analyze_area( src_r::Int64, src_c::Int64, concentration::Float64, dem::ArchGDAL.AbstractDataset, target::ArchGDAL.IGeometry{ArchGDAL.wkbPolygon}, object::AbstractAnalysisObject )
+
+Return a `Matrix{Float64}` containing the results of the analysis reppresented by `object`, run on raster `dem` and limited to the area delimited by `target`, having as
+(`src_r`, `src_c`) as source cell with a value of `concentration`. 
+"""
+function analyze_area( src_r::Int64, src_c::Int64, concentration::Float64, dem::ArchGDAL.AbstractDataset, target::ArchGDAL.IGeometry{ArchGDAL.wkbPolygon},
+                       object::AbstractAnalysisObject )
+    # Maximum size for rows and columns of the raster.
+    r_limt, c_limit = size(dem)
+    # Coordinates of the source.
+    src_coords = toCoords(dem, src_r, src_c)
+    # Direction of flow angle in radians.
+    dir = deg2rad(object.direction)
+    # Sine and cosine of the angle.
+    sindir = sin(dir)
+    cosdir = cos(dir)
+    # Minimum rectangle containing the target polygon.
+    boundingbox = agd.envelope(target)
+    minR, minC = toIndexes(dem, boundingbox.MinX, boundingbox.MinY)
+    maxR, maxC = toIndexes(dem, boundingbox.MaxX, boundingbox.MaxY)
+    # Value used to reppresent absence of data.
+    noData = Float32(agd.getnodatavalue(agd.getband(origin_raster, 1)))
+    # Output matrix
+    data = fill(noData, maxR - minR + 1, maxC - minC + 1)
+    # If source is inside the target area insert its value
+    if agd.contains(target, agd.createpoint(src_coords...))
+        data[src_r - minR + 1, src_c - minC + 1] = concentration
+    end
+    # For each cell fo the bounding rectangle.
+    @inbounds for c in minC:maxC, r in minR:maxR
+        # Get coordinates of the cell
+        cell_coords = toCoords(dem, r, c)
+        # Check if its within the raster, if its distinct from the source and if its within the polygon.
+        if (r <= r_limit && c <= c_limit) && (r != src_r && c != src_c) && agd.contains(target, agd.createpoint(cell_coords...))
+            Δx, Δy = src_coords .- cell_coords
+            object.x = (Δx * cosdir) - (Δy * sindir)
+            object.y = (Δx * sindir) + (Δy * cosdir)
+            if :z in fieldnames(typeof(object))
+               object.z = raster[r, c]
+            end
+            data[r - minR + 1, c - minC + 1] = compute_concentration!(object)
+        end
+    end
+    return data
+end
+
+function analyze_area( src_r::Int64, src_c::Int64, concentration::Float64, dem::ArchGDAL.AbstractDataset, area::ArchGDAL.IGeometry{ArchGDAL.wkbPolygon},
+                       target::ArchGDAL.IGeometry{ArchGDAL.wkbPolygon}, object::AbstractAnalysisObject )
+    band = agd.getband(dem, 1)
+    # Maximum size for rows and columns of the raster.
+    r_limit, c_limit = size(band)
+    # Coordinates of the source.
+    src_coords = toCoords(dem, src_r, src_c)
+    # Direction of flow angle in radians.
+    dir = deg2rad(object.direction)
+    # Sine and cosine of the angle.
+    sindir = sin(dir)
+    cosdir = cos(dir)
+    # Minimum rectangle containing the target polygon.
+    boundingbox = agd.envelope(target)
+    minR, minC = toIndexes(dem, boundingbox.MinX, boundingbox.MaxY)
+    maxR, maxC = toIndexes(dem, boundingbox.MaxX, boundingbox.MinY)
+    # Value used to reppresent absence of data.
+    noData = Float32(agd.getnodatavalue(band))
+    # Output matrix
+    data = fill(noData, maxR - minR + 1, maxC - minC + 1)
+    # If source is inside the target area insert its value
+    if agd.contains(target, agd.createpoint(src_coords...))
+        data[src_r - minR + 1, src_c - minC + 1] = concentration
+    end
+    # For each cell fo the bounding rectangle.
+    @inbounds for c in minC:maxC, r in minR:maxR
+        # Get coordinates of the cell
+        cell_coords = toCoords(dem, r, c)
+        point = agd.createpoint(cell_coords...)
+        # Check if its within the raster, if its distinct from the source and if its within the area and the polygon.
+        if (r <= r_limit && c <= c_limit) && (r != src_r || c != src_c) && agd.contains(area, point) && agd.contains(target, point)
+            Δx, Δy = src_coords .- cell_coords
+            object.x = (Δx * cosdir) - (Δy * sindir)
+            object.y = (Δx * sindir) + (Δy * cosdir)
+            if :z in fieldnames(typeof(object))
+               object.z = raster[r, c]
+            end
+            data[r - minR + 1, c - minC + 1] = compute_concentration!(object)
+        end
+    end
+    return data
+end
+
+
+
+
 end # module
-
-
-
