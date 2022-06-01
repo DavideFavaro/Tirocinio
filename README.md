@@ -13,9 +13,9 @@
 [![Documentation](https://img.shields.io/badge/docs-master-blue.svg)](https://DavideFavaro.github.io/Tirocinio.jl/dev)
 -->
 
-The project has been developed by Davide Favaro as part of a curricular internship at Regione del Veneto, while studying Computer Science at Ca'Foscari university of Venice, Italy, the project was devised and supported by Dr. Gianluca Salogni, company tutor for Regione del Veneto.
-The aim is to create a software in pure Julia capable of analyzing the impact of the diffusiion of chemical substances in open areas of Veneto region, Italy, drawing environmental data from measuring stations of the region and satellite images obtained thanks to the Copernicus project.
-The software is based on Envifate plugin for QGIS, for the analysis functions, Copernicus API, for data gathering, and NMSIMGIS toolbox, for sound diffusion analysis.
+The project has been developed by Davide Favaro as part of a curricular internship at Regione del Veneto, while studying Computer Science at Ca'Foscari university of Venice, Italy, the project was devised and supported by Dr. Gianluca Salogni, company tutor for Regione del Veneto.\n
+The aim is to create a software in pure Julia capable of analyzing the impact of the diffusiion of chemical substances in open areas of Veneto region, Italy, drawing environmental data from measuring stations of the region and satellite images obtained thanks to the Copernicus project.\n
+The software is based on Envifate plugin for QGIS, for the analysis functions, Copernicus API, for data gathering, and NMSIMGIS toolbox, for sound diffusion analysis.\n
 Some of the main scenarios for the analysis are:
 - diffusion of chemicals in aquifers;
 - diffusion chemicals in lakes;
