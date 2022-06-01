@@ -25,4 +25,5 @@ Some of the main scenarios for the analysis are:
 - noise pollution;
 - thermic pollution of rivers;
 - sedimentation of pollutants;
+
 Of the aforementined scenarios only the functions for aquifers, lakes, noises, plumes and sediments are working, the remainder are still in development, as are the GUI and the database component.
