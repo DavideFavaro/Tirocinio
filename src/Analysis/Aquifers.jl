@@ -198,7 +198,7 @@ end
 
 
 """
-    run_leaching(; dem_file::String, source_file::String, area_file::String="", contaminantCASNum::String, concentration::Float64, tollerance::Int64=2, 
+    run_leaching(; dem_file::String, source_file::String, area_file::String="", contaminantCASNum::String, concentration::Float64, tolerance::Int64=2, 
                    aquifer_depth::Float64, aquifer_flow_direction::Int64, mean_rainfall::Float64, texture::String, resolution::Int64, time::Int64=1,
                    orthogonal_width::Float64=10000.0, soil_density::Float64=1.70, source_thickness::Float64=1.0, darcy_velocity::Float64=0.000025,
                    mixing_zone_depth::Float64=1.0, decay_coeff::Float64=0.0, algorithm::Symbol=:fickian, option::Symbol=:continuous,
@@ -212,8 +212,8 @@ Run the simulation of leaching and dispersion of contaminants in an aquifer, ret
 - `area_file::String=""`: path to the shapefile containing the poligon delimiting the area for the analysis.
 - `contaminantCASNum::String`: CAS number identifier of a substance.
 - `concentration::Float64`: concentration of the contaminants at the source.
-- `tollerance::Int64=2`: value used to determine wether the concentration of pollutant in a cell is relevant.
-    Specifically, a concentration value is considered relevant if its value is within "tollerance" orders of magnitute from the concentration on other cells.
+- `tolerance::Int64=2`: value used to determine wether the concentration of pollutant in a cell is relevant.
+    Specifically, a concentration value is considered relevant if its value is within "tolerance" orders of magnitute from the concentration on other cells.
 - `aquifer_depth::Float64`: depth of the aquifer in meters.
 - `aquifer_flow_direction::Int64`: direction of the water flow within the aquifer as an angle in degrees.
 - `mean_rainfall::Float64`: average rainfall volume.
@@ -230,7 +230,7 @@ Run the simulation of leaching and dispersion of contaminants in an aquifer, ret
 - `option::Symbol=:continuous`: second option to define the kind o algorithm to use.
 - `output_path::String=".\\aquifer_output_model.tiff": output file path. 
 """#=
-function run_leaching(; dem_file::String, source_file::String, area_file::String="", contaminantCASNum::String, concentration::Float64, tollerance::Int64=2, 
+function run_leaching(; dem_file::String, source_file::String, area_file::String="", contaminantCASNum::String, concentration::Float64, tolerance::Int64=2, 
                         aquifer_depth::Float64, aquifer_flow_direction::Int64, mean_rainfall::Float64, texture::String, resolution::Float64, time::Int64=1,
                         orthogonal_width::Float64=10000.0, soil_density::Float64=1.70, source_thickness::Float64=1.0, darcy_velocity::Float64=0.000025,
                         mixing_zone_depth::Float64=1.0, decay_coeff::Float64=0.0, algorithm::Symbol=:fickian, option::Symbol=:continuous,
@@ -285,20 +285,20 @@ function run_leaching(; dem_file::String, source_file::String, area_file::String
                (540 - aquifer_flow_direction) % 360, algorithm, option )
     # Run the function that executes the analysis chosing the version based on the presence of a target area.
      # The function returns a vector of triples rppresenting the relevant cells and their corresponding values.
-    points = !isempty(area_file) ? Functions.expand(r_source, c_source, concentration, tollerance, dem, trg_geom, daf) : 
-        Functions.expand(r_source, c_source, concentration, tollerance, dem, daf)
+    points = !isempty(area_file) ? Functions.expand(r_source, c_source, concentration, tolerance, dem, trg_geom, daf) : 
+        Functions.expand(r_source, c_source, concentration, tolerance, dem, daf)
     # Create the resulting raster in memory.
     Functions.create_raster_as_subset(dem, points, output_path)
 end
 =#
 function run_leaching( dem_file::String, source_file::String, aquifer_area_file::String, contaminantCASNum::String,
                        concentration::Float64, aquifer_depth::Float64, aquifer_flow_direction::Int64, mean_rainfall::Float64, texture::String;
-                       tollerance::Int64=2, time::Int64=1, orthogonal_width::Float64=10000.0, soil_density::Float64=1.70, source_thickness::Float64=1.0,
+                       tolerance::Int64=2, time::Int64=1, orthogonal_width::Float64=10000.0, soil_density::Float64=1.70, source_thickness::Float64=1.0,
                        darcy_velocity::Float64=0.000025, mixing_zone_depth::Float64=1.0, decay_coeff::Float64=0.0, algorithm::Symbol=:fickian, option::Symbol=:continuous,
                        output_path::String=".\\aquifer_output_model.tiff" )
 
-    if tollerance < 1 || tollerance > 4
-        throw(DomainError(tollerance, "`tollerance` value must be between 1 and 4"))
+    if tolerance < 1 || tolerance > 4
+        throw(DomainError(tolerance, "`tolerance` value must be between 1 and 4"))
     end
 
     if algorithm ∉ [:fickian, :domenico]
@@ -345,9 +345,11 @@ function run_leaching( dem_file::String, source_file::String, aquifer_area_file:
                (540 - aquifer_flow_direction) % 360, algorithm, option )
     # Run the function that executes the analysis chosing the version based on the presence of a target area.
      # The function returns a vector of triples rppresenting the relevant cells and their corresponding values.
-    points = Functions.expand(r_source, c_source, concentration, tollerance, dem, aqf_geom, daf)
+    start = now()
+    points = Functions.expand(r_source, c_source, concentration, tolerance, dem, aqf_geom, daf)
     # Create the resulting raster in memory.
     Functions.create_raster_as_subset(dem, points, output_path)
+    println(now() - start)
 end
 
 function run_leaching( dem_file::String, source_file::String, aquifer_area_file::String, target_area_file::String, contaminantCASNum::String, concentration::Float64,
@@ -397,9 +399,12 @@ function run_leaching( dem_file::String, source_file::String, aquifer_area_file:
       # In a raster each angle will be mirrored along the Y axis thus the expression above is used to counterbalance this shift. 
     daf = DAF( secondary_source_concentration, x_source, y_source, 0.0, 0.0, decay_coeff, darcy_velocity, soil_adsorption, soil_density, tera_e, orthogonal_width, time,
                (540 - aquifer_flow_direction) % 360, algorithm, option )
+
+    start = now()
     data = Functions.analyze_area(r_source, c_source, concentration, dem, aqf_geom, trg_geom, daf)
     # Create the resulting raster in memory.
     Functions.create_raster_as_subset(dem, trg_geom, data, output_path)
+    println(now() - start)
 end
 
 

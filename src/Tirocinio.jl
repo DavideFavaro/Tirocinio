@@ -303,7 +303,7 @@ src = "C:\\Users\\Lenovo\\Documents\\GitHub\\Tirocinio\\resources\\Analysis data
 dtm = "C:\\Users\\Lenovo\\Documents\\GitHub\\Tirocinio\\resources\\Analysis data\\DTM_32.tiff"
 area = "D:\\Roba del tirocinio\\Risultati Envifate\\Confini\\area.shp"
 trg = "D:\\Roba del tirocinio\\Risultati Envifate\\Confini\\target.shp"
-out = "D:\\Roba del tirocinio\\Risultati Envifate\\Julia rasters\\test_aquifer3.tiff"
+out = "D:\\Roba del tirocinio\\Risultati Envifate\\Julia rasters\\test_aquifer_tol.tiff"
 #   71-43-2   Benzene   liquido   rdf_ing:0.004   rdf_inal:0.00857143   rfc:0.03
 #=
 aqf.run_leaching(
@@ -316,7 +316,7 @@ aqf.run_leaching(
 	aquifer_flow_direction = 0,
 	mean_rainfall = 20.0,
 	texture = "sand",
-    tollerance = 2,
+    tolerance = 2,
 	time = 10,
 	orthogonal_width = 10.0,
 	mixing_zone_depth = 1580.0,
@@ -329,7 +329,7 @@ aqf.run_leaching(
     #   trg,
     "108-88-3", 100.0,
 	1000.0, 0, 20.0, "sand",
-    tollerance = 2,
+    tolerance = 2,
 	time = 10,
 	orthogonal_width = 10.0,
 	mixing_zone_depth = 1580.0,
@@ -347,21 +347,16 @@ src = "C:\\Users\\Lenovo\\Documents\\GitHub\\Tirocinio\\resources\\Analysis data
 dtm = "C:\\Users\\Lenovo\\Documents\\GitHub\\Tirocinio\\resources\\Analysis data\\DTM_32.tiff"
 area = "D:\\Roba del tirocinio\\Risultati Envifate\\Confini\\area.shp"
 trg = "D:\\Roba del tirocinio\\Risultati Envifate\\Confini\\target.shp"
-out = "D:\\Roba del tirocinio\\Risultati Envifate\\Julia rasters\\test_lake115deg.tiff"
+out = "D:\\Roba del tirocinio\\Risultati Envifate\\Julia rasters\\test_lake_trg.tiff"
 lks.run_lake(
-    dem_file = dtm,
-    source_file = src,
-    wind_direction = 0,
-    contaminant_mass = 2000.0,
-    tollerance = 2,
-    mean_flow_speed = 0.03,
-    resolution = 25.0,
-    hours = 10.0,
+    dtm, src, area,
+    trg,
+    2000.0, 0, 0.03, 10.0,
+    #   tolerance = 2,
     fickian_x = 4.0,
     fickian_y = 3.0,
     output_path = out
 )
-
 
 
 
@@ -372,20 +367,12 @@ const plm = Plumes
 src = "C:\\Users\\Lenovo\\Documents\\GitHub\\Tirocinio\\resources\\Analysis data\\source_shapefile\\source_32.shp"
 dtm = "C:\\Users\\Lenovo\\Documents\\GitHub\\Tirocinio\\resources\\Analysis data\\DTM_32.tiff"
 trg = "D:\\Roba del tirocinio\\Risultati Envifate\\Confini\\target.shp"
-out = "D:\\Roba del tirocinio\\Risultati Envifate\\Julia rasters\\test_plume2.tiff"
+out = "D:\\Roba del tirocinio\\Risultati Envifate\\Julia rasters\\test_plume_tol.tiff"
 plm.run_plume(
-    dem_file = dtm,
-    source_file = src,
-    stability = "a",
-    outdoor = "c",
-    concentration = 10000.0,
-    #   tollerance = 2,
-    target = trg,
-    resolution = 25.0,
-    wind_direction = 205,
-    wind_speed = 0.1,
-    stack_height = 80.0,
-    stack_diameter = 1.0,
+    dtm, src,
+    #   trg,
+    "a", "c", 10000.0, 0, 0.1, 80.0, 1.0,
+    tolerance = 2,
     gas_velocity = 0.1,
     gas_temperature = 150.0,
     temperature = 18.0,
@@ -401,21 +388,12 @@ const sdm = Sediments
 src = "C:\\Users\\Lenovo\\Documents\\GitHub\\Tirocinio\\resources\\Analysis data\\source_shapefile\\source_32.shp"
 dtm = "C:\\Users\\Lenovo\\Documents\\GitHub\\Tirocinio\\resources\\Analysis data\\DTM_32.tiff"
 trg = "D:\\Roba del tirocinio\\Risultati Envifate\\Confini\\target.shp"
-out = "D:\\Roba del tirocinio\\Risultati Envifate\\Julia rasters\\test_sediment.tiff"
+out = "D:\\Roba del tirocinio\\Risultati Envifate\\Julia rasters\\test_sediment_trg.tiff"
 sdm.run_sediment(
-	dem_file = dtm,
-	source_file = src,
-	resolution = 25.0,
-	mean_flow_speed = 0.03,
-	mean_depth = 13.0,
-	x_dispersion_coeff = 1.0,
-	y_dispersion_coeff = 10.0,
-	dredged_mass = 4.0,
-    tollerance = 2,
-	flow_direction = 295,
-	mean_sedimentation_velocity = 0.0359,
-	time = 1000,
-	time_intreval = 10,
+	dtm, src,
+    trg,
+	0.03, 13.0, 1.0, 10.0, 4.0, 0, 0.0359, 1000, 10,
+    #   tolerance = 2,
 	output_path = out
 )
 
@@ -447,3 +425,10 @@ NCAS         NOME                     STATO             RFD_ING          RFD_INA
 71-43-2      Benzene                  liquido("l")      0.004            0.00857143           0.03
 96-18-4      1,2,3-Tricloropropano    liquido("l")      0.004            8.571e-5             0.0003
 =#
+
+
+
+
+
+
+D:\Roba del tirocinio\Risultati Envifate\Envifate Rasters\noise.tif

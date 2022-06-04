@@ -347,9 +347,11 @@ function check_and_return_spatial_data( source_file_path::AbstractString, raster
         if agd.toWKT(agd.getspatialref(trg_geom)) != agd.toWKT(agd.getspatialref(src_geom))
             throw(DomainError("The reference systems are not uniform."))
         end
-        return src_geom, trg_geom, dem
+        return src_geom, trg_geom, raster
     end
 end
+
+
 
 """
     check_and_return_spatial_data( source_file_path::AbstractString, limit_area_file_path::AbstractString, raster_file_path::AbstractString )
@@ -388,6 +390,8 @@ function check_and_return_spatial_data( source_file_path::AbstractString, limit_
     end
     return src_geom, lmt_geom, raster
 end
+
+
 
 """
     check_and_return_spatial_data( source_file_path::AbstractString, limit_area_file_path::AbstractString, target_area_file_path::AbstractString, raster_file_path::AbstractString )
@@ -446,20 +450,20 @@ end
 
 
 """
-    expand( src_r::Int64, src_c::Int64, concentration::Float64, tollerance::Int64, dem::ArchGDAL.IDataset, object::AbstractAnalysisObject )
+    expand( src_r::Int64, src_c::Int64, concentration::Float64, tolerance::Int64, dem::ArchGDAL.IDataset, object::AbstractAnalysisObject )
 
-Return a `Vecor{Tuple{Int64, Int64, Float64}}` containing all the cells of raster `dem` that have a value of concentration considerable valid according to `tollerance`
-(so that the concentration of a given cell is within `tollerance` orders of magnitude from that of other cells), the returned tuples hold the indexes of the cell and the
+Return a `Vecor{Tuple{Int64, Int64, Float64}}` containing all the cells of raster `dem` that have a value of concentration considerable valid according to `tolerance`
+(so that the concentration of a given cell is within `tolerance` orders of magnitude from that of other cells), the returned tuples hold the indexes of the cell and the
 corresponding concentration value.
 The analysis strarts from the cell (`src_r`, `src_c`) assuming that the cell holds a concentration of pollutant equal to `concentration` and using `object` to account
 for the specificity of the analysis.
 
 The algorithm creates a queue using a `Vector{Int64, Int64, Float64}`, iteratively the first element of the vector, formed by the indexes of the
-cell to be examined and the result of the preceding cell, is extracted and, if its result is valid according to `tollerance`, its indexes and result are added to the
+cell to be examined and the result of the preceding cell, is extracted and, if its result is valid according to `tolerance`, its indexes and result are added to the
 result vector, otherwise a check is operated to see if the cell's concentration value is greater than its predecessor, if so it is added along with the adjacent cell's
 indexes to the queue, if not the algorithm simply procedes to the following cell, the cyclecontinues untill there are no more cells in the queue.
 """
-function expand( src_r::Int64, src_c::Int64, concentration::Float64, tollerance::Int64, dem::ArchGDAL.IDataset, object::AbstractAnalysisObject )    
+function expand( src_r::Int64, src_c::Int64, concentration::Float64, tolerance::Int64, dem::ArchGDAL.IDataset, object::AbstractAnalysisObject )    
     
     raster::ArchGDAL.IRasterBand{Float32} = agd.getband(dem, 1)
     # Limits for rows and columns.
@@ -507,7 +511,7 @@ function expand( src_r::Int64, src_c::Int64, concentration::Float64, tollerance:
             result = compute_concentration!(object)
             magnitude = round(log10(result))
             # Check if the result's value is not valid.
-            if result == 0.0 || magnitude < valid_magnitude - tollerance
+            if result == 0.0 || magnitude < valid_magnitude - tolerance
                 # Add the cell to the vector of already visited cells.
                 push!(visited, new_points[1][1:2])
                 # If the result is less than that of the preceding cell skip to the next cell to be checked. 
@@ -545,7 +549,7 @@ function expand( src_r::Int64, src_c::Int64, concentration::Float64, tollerance:
     return points
 end
 
-function expand( src_r::Int64, src_c::Int64, concentration::Float64, tollerance::Int64, dem::ArchGDAL.AbstractDataset, area::ArchGDAL.IGeometry{ArchGDAL.wkbPolygon},
+function expand( src_r::Int64, src_c::Int64, concentration::Float64, tolerance::Int64, dem::ArchGDAL.AbstractDataset, area::ArchGDAL.IGeometry{ArchGDAL.wkbPolygon},
                  object::AbstractAnalysisObject )
 
     raster::ArchGDAL.IRasterBand{Float32} = agd.getband(dem, 1)
@@ -602,7 +606,7 @@ function expand( src_r::Int64, src_c::Int64, concentration::Float64, tollerance:
             result = compute_concentration!(object)
             magnitude = round(log10(result))
             # Check if the result's value is not valid.
-            if result == 0 || magnitude < valid_magnitude - tollerance
+            if result == 0 || magnitude < valid_magnitude - tolerance
                 # Add the cell to the vector of already visited cells.
                 push!(visited, new_points[1][1:2])
                 # If the result is less than that of the preceding cell skip to the next cell to be checked. 
@@ -650,8 +654,10 @@ Return a `Matrix{Float64}` containing the results of the analysis reppresented b
 """
 function analyze_area( src_r::Int64, src_c::Int64, concentration::Float64, dem::ArchGDAL.AbstractDataset, target::ArchGDAL.IGeometry{ArchGDAL.wkbPolygon},
                        object::AbstractAnalysisObject )
+    
+    band = agd.getband(dem, 1)
     # Maximum size for rows and columns of the raster.
-    r_limt, c_limit = size(dem)
+    r_limit, c_limit = size(band)
     # Coordinates of the source.
     src_coords = toCoords(dem, src_r, src_c)
     # Direction of flow angle in radians.
@@ -661,10 +667,10 @@ function analyze_area( src_r::Int64, src_c::Int64, concentration::Float64, dem::
     cosdir = cos(dir)
     # Minimum rectangle containing the target polygon.
     boundingbox = agd.envelope(target)
-    minR, minC = toIndexes(dem, boundingbox.MinX, boundingbox.MinY)
-    maxR, maxC = toIndexes(dem, boundingbox.MaxX, boundingbox.MaxY)
+    minR, minC = toIndexes(dem, boundingbox.MinX, boundingbox.MaxY)
+    maxR, maxC = toIndexes(dem, boundingbox.MaxX, boundingbox.MinY)
     # Value used to reppresent absence of data.
-    noData = Float32(agd.getnodatavalue(agd.getband(origin_raster, 1)))
+    noData = Float32(agd.getnodatavalue(band))
     # Output matrix
     data = fill(noData, maxR - minR + 1, maxC - minC + 1)
     # If source is inside the target area insert its value
@@ -676,12 +682,12 @@ function analyze_area( src_r::Int64, src_c::Int64, concentration::Float64, dem::
         # Get coordinates of the cell
         cell_coords = toCoords(dem, r, c)
         # Check if its within the raster, if its distinct from the source and if its within the polygon.
-        if (r <= r_limit && c <= c_limit) && (r != src_r && c != src_c) && agd.contains(target, agd.createpoint(cell_coords...))
+        if (r <= r_limit && c <= c_limit) && (r != src_r || c != src_c) && agd.contains(target, agd.createpoint(cell_coords...))
             Δx, Δy = src_coords .- cell_coords
             object.x = (Δx * cosdir) - (Δy * sindir)
             object.y = (Δx * sindir) + (Δy * cosdir)
             if :z in fieldnames(typeof(object))
-               object.z = raster[r, c]
+               object.z = band[r, c]
             end
             data[r - minR + 1, c - minC + 1] = compute_concentration!(object)
         end
@@ -724,7 +730,7 @@ function analyze_area( src_r::Int64, src_c::Int64, concentration::Float64, dem::
             object.x = (Δx * cosdir) - (Δy * sindir)
             object.y = (Δx * sindir) + (Δy * cosdir)
             if :z in fieldnames(typeof(object))
-               object.z = raster[r, c]
+               object.z = dem[r, c]
             end
             data[r - minR + 1, c - minC + 1] = compute_concentration!(object)
         end
