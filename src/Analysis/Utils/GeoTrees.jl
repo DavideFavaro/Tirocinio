@@ -9,6 +9,15 @@ using SpatialIndexing
 using JLD2
 
 
+
+export CCSTree,
+       createRTree, createCCSTree,
+       check, exists_terrain_type, find_terrain_type_similar,
+       findPolygon, findKNN,
+       saveTree, loadTree
+
+
+
 const agd = ArchGDAL
 const si = SpatialIndexing
 

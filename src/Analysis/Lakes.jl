@@ -96,8 +96,8 @@ function run_lake(; dem_file::String, source_file::String, lake_area_file::Strin
     lake = Lake(contaminant_mass, hours*3600.0, 0.0, 0.0, fickian_x, fickian_y, velocity_x, velocity_y, direction, λk)
     # Run the function that executes the analysis chosing the version based on the presence of a target area.
      # The function returns a vector of triples rppresenting the relevant cells and their corresponding values.
-    points = !isempty(lake_area_file) ? Functions.expand(r_source, c_source, contaminant_mass, tolerance, dem, lake_geom, lake) : 
-        Functions.expand(r_source, c_source, contaminant_mass, tolerance, dem, lake)
+    points = !isempty(lake_area_file) ? Functions.analysis_expand(r_source, c_source, contaminant_mass, tolerance, dem, lake_geom, lake) : 
+        Functions.analysis_expand(r_source, c_source, contaminant_mass, tolerance, dem, lake)
     # Create the resulting raster in memory.
     Functions.create_raster_as_subset(dem, points, output_path)
 end
@@ -125,7 +125,7 @@ function run_lake( dem_file::String, source_file::String, lake_area_file::String
     start = now()
     # Run the function that executes the analysis chosing the version based on the presence of a target area.
      # The function returns a vector of triples rppresenting the relevant cells and their corresponding values.
-    points = Functions.expand(r_source, c_source, contaminant_mass, tolerance, dem, lake_geom, lake) 
+    points = Functions.analysis_expand(r_source, c_source, contaminant_mass, tolerance, dem, lake_geom, lake) 
     # Create the resulting raster in memory.
     Functions.create_raster_as_subset(dem, points, output_path)
     println(now() - start)

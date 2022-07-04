@@ -1,19 +1,5 @@
+"""Module for the download and processing of atmospheric data gathered by measuring stations located in Alto Adige, Italy."""
 module GroundDataAA
-"""
-Module for the download and processing of atmospheric data gathered by measuring stations located in Alto Adige, Italy.
-"""
-#=
-Alto Adige:
-    Link:
-        Stazioni Meteo (JSON):
-            http://dati.retecivica.bz.it/services/meteo/v1/stations
-        Dati Sensori Meteo (JSON):
-            http://dati.retecivica.bz.it/services/meteo/v1/sensors
-        Stazioni QA (JSON):
-            http://dati.retecivica.bz.it/services/airquality/stations
-        Dati sensori QA (JSON):
-            http://dati.retecivica.bz.it/services/airquality/timeseries
-=#
 
 
 
@@ -44,7 +30,7 @@ end
 
 
 """
-    getRegionAttributes( [ type::Symbol=:METEO ] )
+    getRegionIds( [ type::Symbol=:METEO ] )
 
 Obtain the names of the columns of the dataframe required for `GroundData.standardize`'s `bridge` parameter.
 """
@@ -72,7 +58,7 @@ end
 
 
 """
-    getData(; <keyword arguments> )
+    getData(; type::Symbol=:METEO, kind::Symbol=:STATIONS )
 
 Obtain data of category `type` and source of category `kind`.
 
@@ -113,11 +99,6 @@ function getData(; type::Symbol=:METEO, kind::Symbol=:STATIONS )
     end
     return data
 end
-
-#   ressta = getData( type=:METEO, source=:STATIONS )
-#   ressen = getData( type=:METEO, source=:SENSORS )
-#   ressta = getData( type=:AIRQUALITY, source=:STATIONS )
-#   ressen = getData( type=:AIRQUALITY, source=:SENSORS )
 
 
 

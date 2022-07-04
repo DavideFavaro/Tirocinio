@@ -1,25 +1,5 @@
+"""Module for the download and processing of atmospheric data gathered by measuring stations located in Lombardia, Italy."""
 module GroundDataL
-"""
-Module for the download and processing of atmospheric data gathered by measuring stations located in Lombardia, Italy.
-"""
-#=
-Si possono ottenere dati dal link (ALL CSV):
-    Stazioni:
-        https://www.dati.lombardia.it/resource/wkyn-7szs.csv
-    Stazioni meteo provincia di Milano:
-        https://www.dati.lombardia.it/resource/my9y-8ykb.csv
-
-    Stazioni meteo:
-        https://www.dati.lombardia.it/resource/nf78-nj6b.csv
-    Dati sensori meteo:
-        https://www.dati.lombardia.it/resource/647i-nhxk.csv
-    Stazioni aria:
-        https://www.dati.lombardia.it/resource/ib47-atvt.csv
-    Dati sensori aria:
-        https://www.dati.lombardia.it/resource/nicp-bhqi.csv
-Si possono ottenere direttamente CVS dei dati.
-Dati sensori meteo sembra fare al caso nostro ma ha un campo che indica cosa rappresenta il dato che è encoded
-=#
 
 
 
@@ -48,7 +28,7 @@ end
 
 
 """
-    getRegionAttributes( [ type::Symbol=:METEO ] )
+    getRegionIds( [ type::Symbol=:METEO ] )
 
 Obtain the names of the columns of the dataframe required for `GroundData.standardize`'s `bridge` parameter.
 """
@@ -62,7 +42,7 @@ end
 
 
 """
-    getRegionStationInfo( [ type::Symbol=:METEO  ] )
+    getRegionStationsInfo( [ type::Symbol=:METEO  ] )
 
 Obtain the names of the columns of the region's stations dataframe required by `GroundData.createMap`'s `attributes` parameter to be used in `GroundData.generateUuidsTable`.
 """
@@ -76,7 +56,7 @@ end
 
 
 """
-    getData(; <keyword arguments> )
+    getData(; type::Symbol=:METEO, kind::Symbol=:STATIONS )
 
 Obtain data of category `type` and source of category `kind`.
 
@@ -103,11 +83,6 @@ function getData(; type::Symbol=:METEO, kind::Symbol=:STATIONS )
     end
     return df
 end
-
-#   ressta = getData( type=:METEO, source=:STATIONS )
-#   ressen = getData( type=:METEO, source=:SENSORS )
-#   ressta = getData( type=:AIRQUALITY, source=:STATIONS )
-#   ressen = getData( type=:AIRQUALITY, source=:SENSORS )
 
 
 

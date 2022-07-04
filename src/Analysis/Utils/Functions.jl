@@ -17,10 +17,11 @@ include(".\\FunctionsDB.jl")
 
 
 export AbstractAnalysisObject, # Supertype of structs used for the analysis 
-       getindex, setindex!, convert, -, # Functions overloadings
+       getindex, setindex!, convert, # Overloaded functions
        getOrigin, getCellDims, getSidesDistances, toCoords, toIndexes, # Utility functions for retrieving informations on rasters
+       writeRaster, create_raster_as_subset, create_polygon, create_point, # Functions to create spatial data in memory 
        compute_result!, condition, # Empty function definitions created to allow various analysis specific methods
-       compute_position, expand! # Auxiliary functions for the execution of analysis
+       rotate_point, check_and_return_spatial_data, compute_position, analysis_expand, analyze_area # Auxiliary functions for the execution of analysis
 
 
 
@@ -127,7 +128,7 @@ function create_raster_as_subset( origin_raster::ArchGDAL.IDataset, points_of_in
     # would be reordered as:
     #    [ (1, 1, 3.3), (2, 1, 1.1), (3, 5, 2.2) ]
    sort!( points_of_interest, lt=(x, y) -> x[2] < y[2] || ( x[2] == y[2] && x[1] < y[1] ) )
-   # Find the bounding box of the list of cells returned by `expand`, it will be used to create the final raster.
+   # Find the bounding box of the list of cells returned by `analysis_expand`, it will be used to create the final raster.
      # This allows to create a new raster smaller than the original (it is very unlikely for the cells of the original raster to be all valid
      # and it wolud be a waste of time and memory to create a resulting raster any bigger than strictly necessary).
    # After the sort the minimum value for the columns is the second element of the first triplet and maximum value for the columns is the second element of the last triplet.
@@ -450,7 +451,7 @@ end
 
 
 """
-    expand( src_r::Int64, src_c::Int64, concentration::Float64, tolerance::Int64, dem::ArchGDAL.IDataset, object::AbstractAnalysisObject )
+    analysis_expand( src_r::Int64, src_c::Int64, concentration::Float64, tolerance::Int64, dem::ArchGDAL.IDataset, object::AbstractAnalysisObject )
 
 Return a `Vecor{Tuple{Int64, Int64, Float64}}` containing all the cells of raster `dem` that have a value of concentration considerable valid according to `tolerance`
 (so that the concentration of a given cell is within `tolerance` orders of magnitude from that of other cells), the returned tuples hold the indexes of the cell and the
@@ -463,7 +464,7 @@ cell to be examined and the result of the preceding cell, is extracted and, if i
 result vector, otherwise a check is operated to see if the cell's concentration value is greater than its predecessor, if so it is added along with the adjacent cell's
 indexes to the queue, if not the algorithm simply procedes to the following cell, the cyclecontinues untill there are no more cells in the queue.
 """
-function expand( src_r::Int64, src_c::Int64, concentration::Float64, tolerance::Int64, dem::ArchGDAL.IDataset, object::AbstractAnalysisObject )    
+function analysis_expand( src_r::Int64, src_c::Int64, concentration::Float64, tolerance::Int64, dem::ArchGDAL.IDataset, object::AbstractAnalysisObject )    
     
     raster::ArchGDAL.IRasterBand{Float32} = agd.getband(dem, 1)
     # Limits for rows and columns.
@@ -549,7 +550,7 @@ function expand( src_r::Int64, src_c::Int64, concentration::Float64, tolerance::
     return points
 end
 
-function expand( src_r::Int64, src_c::Int64, concentration::Float64, tolerance::Int64, dem::ArchGDAL.AbstractDataset, area::ArchGDAL.IGeometry{ArchGDAL.wkbPolygon},
+function analysis_expand( src_r::Int64, src_c::Int64, concentration::Float64, tolerance::Int64, dem::ArchGDAL.AbstractDataset, area::ArchGDAL.IGeometry{ArchGDAL.wkbPolygon},
                  object::AbstractAnalysisObject )
 
     raster::ArchGDAL.IRasterBand{Float32} = agd.getband(dem, 1)

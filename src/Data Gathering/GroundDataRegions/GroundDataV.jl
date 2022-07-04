@@ -1,7 +1,5 @@
+"""Module for the download and processing of atmospheric data gathered by measuring stations located in Veneto, Italy."""
 module GroundDataV
-"""
-Module for the download and processing of atmospheric data gathered by measuring stations located in Veneto, Italy.
-"""
 
 
 
@@ -13,7 +11,6 @@ using Dates
 using HTTP
 using JSON
 using JSONTables
-using Revise
 
 
 
@@ -95,7 +92,7 @@ end
 
 
 """
-    getRegionAttributes( [ type::Symbol=:METEO ] )
+    getRegionIds( [ type::Symbol=:METEO ] )
 
 Obtain the names of the columns of the dataframe required for `GroundData.standardize`'s `bridge` parameter.
 """
@@ -107,7 +104,7 @@ end
 
 
 """
-    getRegionStationInfo( [ type::Symbol=:METEO  ] )
+    getRegionStationsInfo( [ type::Symbol=:METEO  ] )
 
 Obtain the names of the columns of the region's stations dataframe required by `GroundData.createMap`'s `attributes` parameter to be used in `GroundData.generateUuidsTable`.
 """
@@ -120,7 +117,7 @@ end
 
 
 """
-    getStationsInfo()
+    getMeteoStationsData()
 
 Obtain the dataframe containing informations on all available ARPAV stations.
 """
@@ -149,12 +146,10 @@ function getMeteoStationsData()
     return df
 end
 
-# res = getMeteoStationData()
-
 
 
 """
-    getStationsData( stats::AbstractVector{String} )
+    getMeteoData( stats::AbstractVector{String} )
 
 Obtain the dataframe containing the data of all the stations described by the elements of `stats`.
 """
@@ -164,11 +159,6 @@ function getMeteoData( ids::AbstractVector{Int64} )
     stat_strings_vect = [ split(page, "</ATTIVAZIONE>")[2][1:end-26] for page in pages_vect ]
     # From each station generate the corresponding array of sensors
     sensor_vect = split.( stat_strings_vect, r"</?SENSORE>", keepempty=false )
-    # vect[i][j] i-th station, j-th sensor
-    # vect[i][j][1] j-th sensor's info (Vector)
-    # vect[i][j][2] j-th sensor's data (Vector)
-    # vect[i][j][2][l] j-th sensor'data, l-th measurement (Vector)
-    # vect[i][j][2][l][4] l-th measurement's values (Vector 1 => mean, 2 => min, 3 => max)
     vect = [ sensor.(sensor_group) for sensor_group in sensor_vect ]
     df = DataFrame([
         push!(
@@ -196,9 +186,6 @@ function getMeteoData( ids::AbstractVector{Int64} )
     return df
 end
 
-#   df = getMeteoStationsData()
-#   data = getMeteoSensorsInfo( df[1:3, :idstaz] )
-
 
 
 """
@@ -212,8 +199,6 @@ function getAqStationsData()
     return df
 end
 
-#   res = getAqStationsData()
-
 
 
 """
@@ -223,10 +208,6 @@ Obtain the data gathered by the stations in the area.
 """
 function getAqData()
     page = String(HTTP.get("http://213.217.132.81/aria-json/exported/aria/data.json").body)
-    # js["stazioni"][i]                                            i-th station
-    # js["stazioni"][i]["codseqst"]                                i-th station's id
-    # js["stazioni"][i]["misurazioni"][j]                          i-th station's j-th measurement
-    # js["stazioni"][i]["misurazioni"][j]["pm10"/"ozono"][l]       j-th measurement's l-th entry 
     js = JSON.parse(page)["stazioni"]
     arr = Dict[]
     for station in js
@@ -253,12 +234,10 @@ function getAqData()
     return DataFrame(arr)
 end
 
-#   df = getAqSensorsData()
-
 
 
 """
-    getData(; <keyword arguments> )
+    getData(; type::Symbol=:METEO, kind::Symbol=:STATIONS )
 
 Obtain data of category `type` and source of category `kind`.
 
@@ -288,11 +267,6 @@ function getData(; type::Symbol=:METEO, kind::Symbol=:STATIONS )
         throw(DomainError(type, "`type` must either be `:METEO` or `:AIRQUALITY`."))
     end
 end
-
-#   ressta = getData()
-#   ressen = getData( source=:SENSORS )
-#   ressta = getData( type=:AIRQUALITY, source=:STATIONS )
-#   ressen = getData( type=:AIRQUALITY, source=:SENSORS )
 
 
 

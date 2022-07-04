@@ -1,24 +1,6 @@
+"""Module for the download and processing of atmospheric data gathered by measuring stations located in Trentino, Italy."""
 module GroundDataT
-"""
-Module for the download and processing of atmospheric data gathered by measuring stations located in Trentino, Italy.
-"""
-#=
-Trentino:
-    Altri link utili:
-        https://bollettino.appa.tn.it/aria/scarica
-        https://dati.trentino.it/dataset/anagrafica-stazioni-meteo-stazioni-automatiche
-        https://dati.trentino.it/dataset/dati-recenti-delle-stazioni-meteo
 
-
-    Link:
-        Dati qualità dell'aria (CSV):
-            https://bollettino.appa.tn.it/aria/opendata/csv/last/
-        Stazioni meteo automatiche(XML):
-            http://dati.meteotrentino.it/service.asmx/listaStazioni
-        Dati di una stazione automatica (XML):
-            http://dati.meteotrentino.it/service.asmx/ultimiDatiStazione?codice=T0409
-            ( Codice è l'id di una stazione )
-=#
 
 
 using Base.Iterators
@@ -59,7 +41,7 @@ end
 
 
 """
-    getRegionAttributes( [ type::Symbol=:METEO ] )
+    getRegionIds( [ type::Symbol=:METEO ] )
 
 Obtain the names of the columns of the dataframe required for `GroundData.standardize`'s `bridge` parameter.
 """
@@ -72,7 +54,7 @@ end
 
 
 """
-    getRegionStationInfo( [ type::Symbol=:METEO  ] )
+    getRegionStationsInfo( [ type::Symbol=:METEO  ] )
 
 Obtain the names of the columns of the region's stations dataframe required by `GroundData.createMap`'s `attributes` parameter to be used in `GroundData.generateUuidsTable`.
 """
@@ -127,28 +109,6 @@ function getMeteoData( ids::AbstractVector{String} )
         "rh" => "%"
     )
     xmlpages = EzXML.parsexml.(pages)
- #= OLD VERSION
-    data_vect = Dict[]
-    for (id, station) in zip(ids, xmlpages)
-        for attribute in collect( eachelement( root(station) ) )[5:end]
-            for measurement in eachelement(attribute)
-                msrmt = collect( eachelement(measurement) )
-                for entry in msrmt[2:end]
-                    dict = Dict(
-                        :value => parse( Float64, entry.content ),
-                        :codice => id,
-                        :attribute => attribute.name,
-                        :info => entry.name,
-                        :unit => units[ entry.name ],
-                        :date => msrmt[1].content
-                    )
-                    push!( data_vect, dict )
-                end
-            end
-        end
-    end
-    df = DataFrame(data_vect)
- =#
     df = DataFrame([
         Dict(
             :value => parse(Float64, entry.content),
@@ -167,22 +127,8 @@ function getMeteoData( ids::AbstractVector{String} )
     return df
 end
 
-# sdf = getMeteoStationsDataT()
-# dct = getMeteoDataT( sdf[1:10,:codice] )
 
 
-
-
-#=
-Nel CSV si ha:
-    - TRENTO PSC      <==> di PARCO S. CHIARA
-    - TRENTO VBZ      <==> VIA BOLZANO
-    - ROVERETO LGP    <==> ROVERETO
-    - RIVA GAR        <==> RIVA DEL GARDA
-    - BORGO VALSUGANA <==> BORGO VAL
-manca:
-    - stazione A22 (AVIO)
-=#
 """
     getAQStationsData()
 
@@ -210,12 +156,10 @@ function getAQData()
     return df
 end
 
-#   c = getAQData()
-
 
 
 """
-    getData(; <keyword arguments> )
+    getData(; type::Symbol=:METEO, kind::Symbol=:STATIONS )
 
 Obtain data of category `type` and source of category `kind`.
 
@@ -245,11 +189,6 @@ function getData(; type::Symbol=:METEO, kind::Symbol=:STATIONS )
         throw(DomainError(type, "`type` must either be `:METEO` or `:AIRQUALITY`."))
     end
 end
-
-#   ressta = getData( type=:METEO, kind=:STATIONS )
-#   ressen = getData( type=:METEO, kind=:SENSORS )
-#   ressta = getData( type=:AIRQUALITY, kind=:STATIONS )
-#   ressen = getData( type=:AIRQUALITY, kind=:SENSORS )
 
 
 

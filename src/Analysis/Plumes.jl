@@ -141,7 +141,7 @@ function run_plume(; dem_file::String, source_file::String, stability::String, o
                    (540 - wind_direction) % 360, wind_speed, gas_velocity, gas_temperature, temperature, 0.0 )
     # Run the function that executes the analysis.
      # The function returns a vector of triples rppresenting the relevant cells and their corresponding values.
-    points = Functions.expand(r_source, c_source, concentration, tolerance, dem, plume)
+    points = Functions.analysis_expand(r_source, c_source, concentration, tolerance, dem, plume)
     # Create the resulting raster in memory.
     Functions.create_raster_as_subset(dem, points, output_path)
 end
@@ -170,7 +170,7 @@ function run_plume( dem_file::String, source_file::String, stability::String, ou
     start = now()
     # Run the function that executes the analysis.
      # The function returns a vector of triples rppresenting the relevant cells and their corresponding values.
-    points = Functions.expand(r_source, c_source, concentration, tolerance, dem, plume)
+    points = Functions.analysis_expand(r_source, c_source, concentration, tolerance, dem, plume)
     # Create the resulting raster in memory.
     Functions.create_raster_as_subset(dem, points, output_path)
     println(now() - start)

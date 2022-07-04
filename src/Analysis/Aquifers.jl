@@ -285,8 +285,8 @@ function run_leaching(; dem_file::String, source_file::String, area_file::String
                (540 - aquifer_flow_direction) % 360, algorithm, option )
     # Run the function that executes the analysis chosing the version based on the presence of a target area.
      # The function returns a vector of triples rppresenting the relevant cells and their corresponding values.
-    points = !isempty(area_file) ? Functions.expand(r_source, c_source, concentration, tolerance, dem, trg_geom, daf) : 
-        Functions.expand(r_source, c_source, concentration, tolerance, dem, daf)
+    points = !isempty(area_file) ? Functions.analysis_expand(r_source, c_source, concentration, tolerance, dem, trg_geom, daf) : 
+        Functions.analysis_expand(r_source, c_source, concentration, tolerance, dem, daf)
     # Create the resulting raster in memory.
     Functions.create_raster_as_subset(dem, points, output_path)
 end
@@ -346,7 +346,7 @@ function run_leaching( dem_file::String, source_file::String, aquifer_area_file:
     # Run the function that executes the analysis chosing the version based on the presence of a target area.
      # The function returns a vector of triples rppresenting the relevant cells and their corresponding values.
     start = now()
-    points = Functions.expand(r_source, c_source, concentration, tolerance, dem, aqf_geom, daf)
+    points = Functions.analysis_expand(r_source, c_source, concentration, tolerance, dem, aqf_geom, daf)
     # Create the resulting raster in memory.
     Functions.create_raster_as_subset(dem, points, output_path)
     println(now() - start)

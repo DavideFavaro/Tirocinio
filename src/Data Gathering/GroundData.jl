@@ -69,7 +69,7 @@ end
 
 
 """
-    createMap( attributes::AbstractVector, destinations::AbstractVector[; n::Int64=0] )
+    createMap( attributes::AbstractVector, destinations::AbstractVector )
 
 Create an array of pairs from the tow input vectors, skipping the last `n` pairs
 """
@@ -81,7 +81,7 @@ end
 
 
 """
-    standarize(
+    standarize( map::AbstractVector, dfSta::DataFrame, dfSen::Union{DataFrame, Nothing}=nothing, bridge::Union{ Nothing, Symbol, Pair{Symbol, Symbol} }=nothing )
     
 Generate a dataframe in standard format from `dfSta` and `dfSen` using `bridge` to join the two dataframes and `map` to select the desired columns
 and map them to the standard ones.

@@ -1,30 +1,5 @@
+"""Module for the download and processing of atmospheric data gathered by measuring stations located in Friuli Venezia Giulia, Italy."""
 module GroundDataFVG
-"""
-Module for the download and processing of atmospheric data gathered by measuring stations located in Friuli Venezia Giulia, Italy.
-"""
-#=
-Accesso risorse Friuli:
-    https://www.dati.friuliveneziagiulia.it/resource/qp5k-6pvm.csv
-
-    Qualità dell'aria:
-        PM10:                       qp5k-6pvm
-        PM2.5:                      d63p-pqpr
-        Ozono:                      7vnx-28uy
-        Monossido di carbonio:      t274-vki6
-        Biossido di zolfo:          2zdv-x7g2
-        Biossido di azoto:          ke9b-p6z2
-        Pollini:                    svph-8w2g
-    
-    Meteo:
-        Elenco sensori:             498i-2j88
-        Previsioni e dati:          j654-ykm6 (Probabilmente non funzionante, il link è esterno e non ha il download)
-        Dati stazioni:              4wxn-35av (Probabilmente non funzionante, il link è esterno e non ha il download)
-
-
-Link:
-    Dati stazioni:
-        https://dev.meteo.fvg.it/xml/stazioni/GRA.xml
-=#
 
 
 
@@ -69,7 +44,7 @@ end
 
 
 """
-    getRegionAttributes( [ type::Symbol=:METEO ] )
+    getRegionIds( [ type::Symbol=:METEO ] )
 
 Obtain the names of the columns of the dataframe required for `GroundData.standardize`'s `bridge` parameter.
 """
@@ -82,7 +57,7 @@ end
 
 
 """
-    getRegionStationInfo( [ type::Symbol=:METEO  ] )
+    getRegionStationsInfo( [ type::Symbol=:METEO  ] )
 
 Obtain the names of the columns of the region's stations dataframe required by `GroundData.createMap`'s `attributes` parameter to be used in `GroundData.generateUuidsTable`.
 """
@@ -105,10 +80,7 @@ end
 
 
 
-#   prec_type
-#       0:nulla; 1:pioggia; 2:pioggia e neve; 3:neve
-#   cloudiness
-#       0:n.d.; 1:sereno; 2:poco nuvoloso; 3:variabile; 4:nuvoloso; 5:coperto
+
 """
     getMeteoData()
 
@@ -119,8 +91,6 @@ function getMeteoData()
                   "ENE", "FAG", "FOS", "FSP", "GEM", "GRA", "GRG", "GRM", "LAU", "LIG", "LSR", "MAT", "MGG", "MNF", "MUS",
                   "PAL", "PDA", "PIA", "213200", "POR", "PRD", "RIV", "SAN", "SGO", "SPN", "TAL", "TAR", "TOL", "TRI",
                   "UDI", "VIV", "ZON" ]
-    #   prec_type = [ "nulla", "pioggia", "pioggia e neve", "neve" ]
-    #   cloudiness = [ "n.d.", "sereno", "poco nuvoloso", "variabile", "nuvoloso", "coperto" ]
     data_str = String[]
     for res in resources
         try
@@ -189,7 +159,7 @@ end
 
 
 """
-    getData(; <keyword arguments> )
+    getData(; type::Symbol=:METEO, kind::Symbol=:STATIONS )
 
 Obtain data of category `type` and source of category `kind`.
 
@@ -212,10 +182,6 @@ function getData(; type::Symbol=:METEO, kind::Symbol=:STATIONS )
         throw(DomainError(type, "`type` must either be `:METEO` or `:AIRQUALITY`."))
     end
 end
-
-#   ressta = getData( type=:METEO, source=:STATIONS )
-#   ressen = getData( type=:METEO, source=:SENSORS )
-#   ressen = getData( type=:AIRQUALITY )
 
 
 

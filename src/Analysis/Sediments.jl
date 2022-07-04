@@ -111,7 +111,7 @@ function run_sediment(; dem_file::String, source_file::String, resolution::Float
                          (540 - flow_direction) % 360, mean_sedimentation_velocity, time_intreval, current_oscillatory_amplitude, tide)
     # Run the function that executes the analysis.
      # The function returns a vector of triples rppresenting the relevant cells and their corresponding values.
-    points = Functions.expand(r_source, c_source, dredged_mass, tolerance, dem, sediment)
+    points = Functions.analysis_expand(r_source, c_source, dredged_mass, tolerance, dem, sediment)
     # Create the resulting raster in memory.
     Functions.create_raster_as_subset(dem, points, output_path)
 end
@@ -131,7 +131,7 @@ function run_sediment( dem_file::String, source_file::String, mean_flow_speed::F
     start = now()
     # Run the function that executes the analysis.
      # The function returns a vector of triples rppresenting the relevant cells and their corresponding values.
-    points = Functions.expand(r_source, c_source, dredged_mass, tolerance, dem, sediment)
+    points = Functions.analysis_expand(r_source, c_source, dredged_mass, tolerance, dem, sediment)
     # Create the resulting raster in memory.
     Functions.create_raster_as_subset(dem, points, output_path)
     println(now() - start)
