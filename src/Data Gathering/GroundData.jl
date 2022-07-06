@@ -71,7 +71,8 @@ end
 """
     createMap( attributes::AbstractVector, destinations::AbstractVector )
 
-Create an array of pairs from the tow input vectors, skipping the last `n` pairs
+Create an array of pairs from the two input vectors.
+Used to map the attributes obtained by one of the "getData" functions of the "GroundData..." modules to the standard attributes.
 """
 function createMap( attributes::AbstractVector, destinations::AbstractVector )
     min_len = min( length.( [attributes, destinations] )... )

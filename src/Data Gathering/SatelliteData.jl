@@ -43,32 +43,17 @@ const agd = ArchGDAL
 
 
 
-# Funzione presa da: https://stackoverflow.com/questions/48104390/julias-most-efficient-way-to-choose-longest-array-in-array-of-arrays
 """
-    maxLenIndex( vect::AbstractVector )
+    authenticate( username::AbstractString, password::AbstractString, type::Symbol=:Base )
 
-Retunr the index of the longest vector inside `vect` ad its length.
+Create an authentication token of type "type" for the user.
 """
-function maxLenIndex( vect::AbstractVector )
-    len = 0
-    index = 0
-    @inbounds for i in 1:length(vect)
-        l = length( vect[i] )
-        l > len && ( index = i; len=l )
-    end
-    return index
-end
-
-
-
-"""
-    authenticate( username::AbstractString, password::AbstractString[, type::AbstractString ] )
-
-Create an authentication token of type "type" for the user
-"""
-function authenticate( username::AbstractString, password::AbstractString, type::AbstractString = "Base" )
-    if type == "Base"
-        return HTTP.Base64.base64encode("$username:$password") #Trasformazione dei dati nel formato valido per la verifica
+function authenticate( username::AbstractString, password::AbstractString, type::Symbol=:Base )
+    if type == :Base
+        # Convert `username` and `password` in a valid authentication format
+        return HTTP.Base64.base64encode("$username:$password")
+    else
+        throw(DomainError(type, "Autenthication not supported"))
     end
 end
 
@@ -106,7 +91,7 @@ end
 """
     getAoi( path::AbstractString )::AbstractString
 
-Return the WKT `String` rappresentation of the geometry contained in the shapefile `path`
+Return the WKT rappresentation of the geometry contained in the shapefile `path`.
 """
 function getAoi( path::AbstractString )::AbstractString
     data = agd.read(path)
@@ -128,11 +113,11 @@ end
 #||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||
 
 """
-    getProductsBuffer( authToken::AbstractString[, start::Integer, maxNumber::Union{Integer, Nothing} ] )
+    getProductsInfoBuffer( authToken::AbstractString[, start::Integer, maxNumber::Union{Integer, Nothing} ] )
 
 Obtain `maxNumber` XML description of products, starting from `start`, through `authToken`, returning the IOBuffer that contains them all
 """
-function getProductsBuffer( username::AbstractString, password::AbstractString, aoi::AbstractString; numMonths::Integer=6, start::Integer=0,
+function getProductsInfoBuffer( username::AbstractString, password::AbstractString, aoi::AbstractString; numMonths::Integer=6, start::Integer=0,
                             max::Union{Integer, Nothing}=nothing, last::Bool=false )
  # Definition of the components of The URL
     authToken = authenticate(username, password)
@@ -182,30 +167,28 @@ end
 
 
 """
-    getProductsDicts( fileIO::IO )
+    getProductsInfoDicts( fileIO::IO )
 
 Given the IOBuffer obtained through "getProductsBuffer()", return an array of the dictionaries containing the informations on each of the products of the page 
 """
-function getProductsDicts( fileIO::IO )
+function getProductsInfoDicts( fileIO::IO )
     # Get the downloaded XML representations of the products
     original = replace( String( take!(fileIO) ), "\n" => "" )
-
     # Split the downloaded files into pages
     pages = split(original, r"<\?xml [^<>]+><[^<>]+>", keepempty=false)
-
     # Split the result in a vector of ready-to-be-parsed strings representing single products
     vector = reduce( vcat, [ split( page, r"</?entry>", keepempty=false )[2:end-1] for page in pages ] )
-
     # Parse the strings
     products = [ product(x)[8:end] for x in vector ]
-
     # Generate a vector of dictionaries containing the details for each product of the original page adding to each of them an additional value to account for the
-        # original order of the data
-    return [ push!(
-                Dict( Symbol( join( prod[:opening][7] ) ) => parseConvert( join( prod[:type][1] ), join( prod[:content] ) ) for prod in products[i] ),
-                :orderNumber => i, 
-            )
-            for i in 1:length(products) ]
+      # original order of the data
+    return [ 
+        push!(
+            Dict( Symbol( join( prod[:opening][7] ) ) => parseConvert( join( prod[:type][1] ), join( prod[:content] ) ) for prod in products[i] ),
+            :orderNumber => i, 
+        )
+        for i in 1:length(products)
+    ]
 end
 
 #   dict = getProductsDicts(io)
@@ -216,12 +199,12 @@ end
 
 
 """
-    getProductsDF( authToken::AbstractString[, start::Integer, maxNumber::Union{Integer, Nothing} ] )
+    getProductsInfo( authToken::AbstractString[, start::Integer, maxNumber::Union{Integer, Nothing} ] )
 
 Generate the DataFrame containing the data of `maxNumber` products using `username` and `password` for authentication, if `maxNumber` is not specified, the df will include all available products,
 if `start` is specified the downloaded data will begin from that index
 """
-function getProductsDF( userame::AbstractString, password::AbstractString, aoi::AbstractString; numMonths::Integer=6, start::Integer=0, max::Union{Integer, Nothing}=nothing, last::Bool=false )::DataFrame
+function getProductsInfo( userame::AbstractString, password::AbstractString, aoi::AbstractString; numMonths::Integer=6, start::Integer=0, max::Union{Integer, Nothing}=nothing, last::Bool=false )::DataFrame
  # Download "maxNumber" pages and return the buffer containing them
     io = getProductsBuffer(userame, password, aoi, numMonths=numMonths, start=start, max=max, last=last)
  # Create a vector of dictionaries of the products
@@ -255,7 +238,7 @@ end
 
 Save "data" in "targetDirectory" if not already existing or if "overwrite" is true, otherwise append its content to "data.csv"
 """
-function saveProductsDF( targetDirectory::AbstractString, data::DataFrame; overwrite::Bool=false )
+function saveProductsInfo( targetDirectory::AbstractString, data::DataFrame; overwrite::Bool=false )
     condition = !overwrite && in("data.csv", readdir(targetDirectory))
     if condition
         # Preexisting data
@@ -276,14 +259,9 @@ end
 
 
 
-"""
-    createUnitsDF( columns::AbstractVector{AbstractString}, units::AbstractVector{AbstractString} )
 
-Given the array of column names and the array of their respective units of measure, create a df associating both
-"""
-function createUnitsDF( columns::AbstractVector{AbstractString}, units::AbstractVector{AbstractString} )
-    return Dataframe( Dict( columns .=> units ) )
-end
+
+
 
 
 
@@ -306,6 +284,16 @@ Mark all products in "fileIDs" as unavailable
 function setUnavailable( fileIDs::Union{ AbstractString, AbstractVector{AbstractString} } )
     updateProductsVal( fileIDs, "products", "available", false )
 end
+
+
+
+
+
+
+
+
+
+
 
 
 """
@@ -339,7 +327,7 @@ end
 Return products that overlap the geometry specified by `aoi_path` shapefile, using `username` and `password` for authentication return `num_per_month` products for each month
 in the `from`-`to` interval.  
 """
-function selectProducts( userame::AbstractString, password::AbstractString, aoi_path::AbstractString, num_per_month::Integer, from::Integer=0, to::Integer=6 )
+function productsInfoByArea( userame::AbstractString, password::AbstractString, aoi_path::AbstractString, num_per_month::Integer, from::Integer=0, to::Integer=6 )
     aoi = getAoi(aoi_path)
  # DA AGGIUNGERE LA POSSIBILITA' DI SPECIFICARE IL MESE DA CUI INIZIARE A PRENDERE I PRODOTTI
     #   df::DataFrame = getProductsDF(userame, password, aoi, numMonths=(Months(to) - Months(from)).value)
@@ -349,14 +337,12 @@ function selectProducts( userame::AbstractString, password::AbstractString, aoi_
     #   for m in month.(collect( Month(from):Month(1):Month(to) ))
     for m in month.(collect( now()-Month(6):Month(1):now() ))
         ind::Int64 = 1
-        for i in 1:num_per_month
-            for sat in ["Sentinel-1", "Sentinel-2", "Sentinel-3"]
-                first::Union{Int64, Nothing} = findfirst( row -> condition(row..., m, sat), eachrow( df[ ind:end, [:beginposition, :platformname, :cloudcoverpercentage, :productlevel] ] ) )
-                if !isnothing(first)
-                    ind = first 
-                    push!(idxs, first)
-                    ind += 1
-                end
+        for i in 1:num_per_month, sat in ["Sentinel-1", "Sentinel-2", "Sentinel-3"]
+            first::Union{Int64, Nothing} = findfirst( row -> condition(row..., m, sat), eachrow( df[ ind:end, [:beginposition, :platformname, :cloudcoverpercentage, :productlevel] ] ) )
+            if !isnothing(first)
+                ind = first 
+                push!(idxs, first)
+                ind += 1
             end
         end
     end
@@ -372,9 +358,9 @@ end
 
 
 """
-    dowloadProducts( userame::AbstractString, password::AbstractString, uuid::Int64, output_dir_path::AbstractString )
+    dowloadProducts( userame::AbstractString, password::AbstractString, uuids::Vector{Int64}, output_dir_path::AbstractString )
 
-Download the product identified by `uuid` using `username` and `password` for authentication and save it in `output_dir_path` using `uuid` as filename.
+Download all the products identified by the ids contained in `uuids` using `username` and `password` for authentication and save them in `output_dir_path` using their uuids as filenames.
 If `show_progress` is set to `true` the progress of the download will be printed, if `verbose` is set to `true` additional informations will be printed.
 """
 dowloadProducts( userame::AbstractString, password::AbstractString, uuid::Int64, output_dir_path::AbstractString, show_progress::Bool=false, verbose::Bool=false ) =
@@ -386,12 +372,7 @@ dowloadProducts( userame::AbstractString, password::AbstractString, uuid::Int64,
         verbose = verbose
     )
 
-"""
-    dowloadProducts( userame::AbstractString, password::AbstractString, uuids::Vector{Int64}, output_dir_path::AbstractString )
 
-Download all the products identified by the ids contained in `uuids` using `username` and `password` for authentication and save them in `output_dir_path` using their uuids as filenames.
-If `show_progress` is set to `true` the progress of the download will be printed, if `verbose` is set to `true` additional informations will be printed.
-"""
 function dowloadProducts( userame::AbstractString, password::AbstractString, uuids::Vector{Int64}, output_dir_path::AbstractString, show_progress::Bool=false, verbose::Bool=false )
     authtoken = authenticate(username, password)
     if show_progress
@@ -401,18 +382,20 @@ function dowloadProducts( userame::AbstractString, password::AbstractString, uui
             Downloads.download(
                 "https://scihub.copernicus.eu/dhus/odata/v1/Products('$id')/\$value",
                 output_dir_path*"\\$id",
-                headers=["Authorization" => "Basic $authtoken"],
+                headers = ["Authorization" => "Basic $authtoken"],
                 progress = ( total, now ) -> println("\t$(now/total*100)% ( $now / $total )"),
                 verbose = verbose
             )
         end
     else
-        Downloads.download(
+        for id in uuids
+            Downloads.download(
                 "https://scihub.copernicus.eu/dhus/odata/v1/Products('$id')/\$value",
                 output_dir_path*"\\$id",
-                headers=["Authorization" => "Basic $authtoken"],
+                headers = ["Authorization" => "Basic $authtoken"],
                 verbose = verbose
             )
+        end
     end
 end
 
