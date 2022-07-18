@@ -980,7 +980,7 @@ Create and save as `output_path` a raster containing the results of model of dis
 - `source_file::String`: path to the shapefile containing the source point of the noise.
 - `temperature_K::Float64`: outside mean temperature in kelvin. 
 - `relative_humidity::Float64`: relative humidity.
-- `dB::Float64`: sound intenisty in decibel.
+- `intensity_dB::Float64`: sound intenisty in decibel.
 - `frequency::Float64`: frequency of the sound in hertz.
 """
 function run_noise(; dem_file::String, terrain_impedences_file::String="", source_file::String, temperature_K::Float64, relative_humidity::Float64,

@@ -146,196 +146,95 @@ end
 # Pollutants diffusion in an aquifer
 
 # ╔═╡ 75eaae0c-55e9-4de5-9d31-f405f60f5863
-#=
-contaminants: (vettore di String)
-	nomi della sostanze da usare per estrarre i valori "c_henry", "koc_kd" dal database.
-concentrations: (vettore di Float64)
-	concentrazioni delle sostanze.
-aquifer_depth: (Float64)
-	profondità della falda.
-acquifer_flow_direction: (Int64)
-	angolo del flusso dell'aqua nella falda in gradi (credo?)
-mean_rainfall: (Float64)
-	pioggia media
-texture: (String)
-	credo sia la tipologia di terreno in cui filtrano gli inquinanti, da usare per estrarre i valori "tot_por", "c_water_avg", "effective_infiltration",
-	"por_eff", "grain" dal database.
-orthogonal_extension: (Float64)
-	estensione ortogonale?
-soil_density: (Float64)
-	densità del suolo
-source_thickness: (Float64)
-	spessore fonte?
-darcy_velocity: (Float64)
-	velocità di Darcy?
-mixed_zone_depth: (Float64)
-	profondità zoma mista?
-decay_coeff: (Float64)
-	coefficiente di decadimento?
-=#
-Aquifers.run_leaching(
-	dem_file = dtm_file,
-	source_file = source_file,
-	contaminantCASNum="108-88-3",
-	concentration = 100.0,
-	tollerance = 2,
-	aquifer_depth = 1000.0,
-	acquifer_flow_direction = 180,
-	mean_rainfall = 20.0,
-	texture = "sand",
-	resolution = 25.0,
-	time = 10,
-	orthogonal_width = 10.0,
-	darcy_velocity = 0.000025,
-	mixed_zone_depth = 1580.0,
-	algorithm = :domenico,
-	output_path = "..\\resources\\Analysis data\\Analysis results\\test_aquifer.tiff")
+Aquifers.run_aquifer(
+    dtm_file,
+    source_file,
+    area_file,
+    "108-88-3",
+    100.0,
+    1000.0,
+    45,
+    20.0,
+    "sand",
+    tolerance = 2,
+    time = 10,
+    orthogonal_width = 10.0,
+    mixing_zone_depth = 1580.0,
+    algorithm = :domenico,
+    output_path = "..\\resources\\Analysis results\\test_aquifer.tiff"
+)
 
 # ╔═╡ d8f5f781-6d0d-48e5-b7be-63c6c41fe94a
 # Polutants dispersion in lakes
 
 # ╔═╡ f62e94e9-9c0c-4ed7-b87d-c0d958257d59
-#=
-wind_direction: (Int64)
-	direzione del vento come angolo in gradi.
-pollutant_mass: (Float64)
-	massa dell'inquinante.
-flow_mean_speed: (Float64)
-	velocità del flusso.
-hours: (Int64)
-	durata dell'analisi in ore.
-fickian_x: (Float64)
-	?
-fickian_y: (Float64)
-	?
-λk: (Float64)
-	?
-=#
 Lakes.run_lake(
-	dem_file = dtm_file,
-	source_file = source_file,
-	wind_direction = 180,
-	pollutant_mass = 2000.0,
-	tollerance = 2,
-	mean_flow_speed = 0.03,
-	resolution = 25.0,
-	hours = 10.0,
-	fickian_x = 4.0,
-	fickian_y = 3.0,
-	output_path = "..\\resources\\Analysis data\\Analysis results\\test_lake.tiff"
+    dtm_file,
+    source_file,
+    area_file,
+    2000.0,
+    135,
+    0.03,
+    10.0,
+    tolerance = 2,
+    fickian_x = 4.0,
+    fickian_y = 3.0,
+    output_path = "..\\resources\\Analysis results\\test_lake.tiff"
 )
 
 # ╔═╡ 537c45ac-88c6-4a4b-96ec-a5021f69ee5a
 # Noise pollution
 
 # ╔═╡ 725222e8-960b-4618-8b3c-aa493caf7c16
-#=
-"A" sostituisce il raster delle impedenze (nel codice uso una matrice contenente solo 0)
-temperatura atmosferica in kelvin
-umidità relativa (credo come percentuale in decimale)
-intensità del suono
-frequenza del suono
-=#
 Noises.run_noise(
     dem_file = dtm_file,
     source_file = source_file,
     temperature_K = 293.15,
     relative_humidity = 0.2,
     intensity_dB = 110.0,
-    frequency = 400.0 
+    frequency = 400.0,
+    output_path = "..\\resources\\Analysis results\\test_noise.tiff"
 )
 
 # ╔═╡ 83a9cd5e-041c-4997-ae8d-d1027f297b96
 # Airborne pollutants dispersion from a stack
 
 # ╔═╡ 7c9a6143-5331-42dd-9541-052d411bc284
-#=
-stability: (String)
-	Informazioni sul tempo meteorologico?
-	Usato per ottenere i campi "sf_ing", "sf_inal", "iur", "rfd_ing", "rfd_inal", "rfc" a questi corrispondono i messaggi "Slope Factor per ingestione", 
-	"Slope Factor per inalazione","Inhalation Unit Risk","Reference Dose per ingestione","Reference Dose per inalazione","Reference Concentration" dal database.
-outdoor: (String)
-	Usato insieme a "stability" per ottenere valori dal database. 
-wind_direction: (Int64)
-	direzione del vento come angolo.
-concentration: (Float64)
-	concentrazione della sostanza.
-wind_speed: (Float64)
-	velocità del vento.
-stack_height: (Float64)
-	altezza del camino.
-gas_speed: (Float64)
-	velocità dei fumi?
-stack_diameter: (Float64)
-	diametro del camino.
-smoke_temperature: (Float64)
-	temperatura dei fumi.
-temperature: (Float64)
-	temperatura dell'ambiente.
-=#
 Plumes.run_plume(
-	dem_file = dtm_file,
-	source_file = source_file,
-	stability = "a",
-	outdoor = "c",
-	concentration = 10000.0,
-	tollerance = 2,
-	resolution = 25.0,
-	wind_direction = 135,
-	wind_speed = 0.1,
-	stack_height = 80.0,
-	stack_diameter = 1.0,
-	gas_velocity = 0.1,
-	gas_temperature = 150.0,
-	temperature = 18.0,
-	output_path = "..\\resources\\Analysis test data\\Analysis results\\test_plumes.tiff"
+    dtm_file,
+    source_file,
+    "a",
+    "c",
+    10000.0,
+    225,
+    0.1,
+    80.0,
+    1.0,
+    tolerance = 2,
+    gas_velocity = 0.1,
+    gas_temperature = 150.0,
+    temperature = 18.0,
+    output_path = "..\\resources\\Analysis results\\test_plumes.tiff"
 )
 
 # ╔═╡ 3173f593-c0af-4a14-86a6-93d91109edca
 # Pollutants sedimentation
 
 # ╔═╡ 928d1a74-86a8-488c-92fd-b660794db328
-#=
-mean_flow_speed: (Float64)
-	velocità media della corrente.
-mean_depth: (Float64)
-	profondità media.
-x_dispersion_coeff: (Float64)
-	coefficiente di dispersione su x?
-y_dispersion_coeff: (Float64)
-	coefficiente di dispersione su y?
-dredged_mass: (Float64)
-	massa trasportata.
-flow_direction: (Int64)
-	direzione del flusso come angolo in gradi.
-mean_sedimentation_velocity: (Float64)
-	velocità di sedimentazione.
-time: (Int64)
-	tempo di inizio del modello.
-time_intreval: (Int64)
-	lunghezza di un'epoca.
-current_oscillatory_amplitude: (Float64)
-	ampiezza di oscillazione della corrente?
-tide: (Int64)
-	ciclo di marea in ore?.
-=#
 Sediments.run_sediment(
-	dem_file = dtm_file,
-	source_file = source_file,
-	resolution = 25.0,
-	mean_flow_speed = 0.03,
-	mean_depth = 13.0,
-	x_dispersion_coeff = 1.0,
-	y_dispersion_coeff = 10.0,
-	dredged_mass = 4.0,
-	tollerance = 2,
-	flow_direction = 180,
-	mean_sedimentation_velocity = 0.0359,
-	time = 100,
-	time_intreval = 1,
-	current_oscillatory_amplitude = 0.0,
-	tide = 0,
-	output_path = "..\\resources\\Analysis data\\Analysis results\\test_sediments.tiff"
+    dtm_file,
+    source_file,
+    0.03,
+    13.0,
+    1.0,
+    10.0,
+    4.0,
+    315,
+    0.0359,
+    100,
+    1,
+    tolerance = 2,
+    output_path = "..\\resources\\Analysis results\\test_sediments.tiff"
 )
 
 # ╔═╡ Cell order:

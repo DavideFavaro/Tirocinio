@@ -118,7 +118,7 @@ end
 Obtain `maxNumber` XML description of products, starting from `start`, through `authToken`, returning the IOBuffer that contains them all
 """
 function getProductsInfoBuffer( username::AbstractString, password::AbstractString, aoi::AbstractString; numMonths::Integer=6, start::Integer=0,
-                            max::Union{Integer, Nothing}=nothing, last::Bool=false )
+                            max::Integer=0, last::Bool=false )
  # Definition of the components of The URL
     authToken = authenticate(username, password)
     query2 = "[NOW-$(numMonths)MONTHS%20TO%20NOW]%20AND%20footprint:\"Intersects($aoi)\""
@@ -126,38 +126,37 @@ function getProductsInfoBuffer( username::AbstractString, password::AbstractStri
     iob = IOBuffer()
 
  # Get number of total products
-    #Download the firs page (This way we can get the number we are interested in and also the first page that we would download anyway)
+    # Download the first page (This way we can get the number we are interested in and also the first page that we would download anyway)
     Downloads.download( "https://scihub.copernicus.eu/dhus/$query", iob, headers = [ "Authorization" => "Basic $authToken" ] )
     lines = String(take!(iob))
     val = tryparse( Int64, split( split( lines, "totalResults>" )[2], "<" )[1] )
-    # "count" has two values: the first is the number of pages (undreds of products) and the second is a number of products smaller than 100 to be downloaded in an additional page
-    count = val
-
-    #Check if `start` has a sensible value
+    productsNum = val
+    pagesNum = 0
+    # Check if `start` has a sensible value
     if ( last && start == 0 ) || start > val
         start = val -1
     end
-
-    # Check if `maxNumber` has a sensible value
-    if !isnothing(max) && max > 0 && max < val
-        count = max
+    # Check if `max` has a sensible value
+    if max > 0 && max < val
+        productsNum = max
     end
-
-    # Calculate the value of count in terms of pages of 100 products each accounting for the starting point
-    if start < count
-        count -= start
+    # Number of products accounting for the starting point
+    if start < productsNum
+        productsNum -= start
     end
-    count = [ count ÷ 100, count % 100 ]
-
+    # The number of pages (1 page = 100 products) to be downloaded
+    pagesNum = productsNum ÷ 100
+    # Number (smaller than 100) of products to be downloaded in an additional page
+    productsNum %= 100
  # Download the desired number pages and store the in an IOBuffer
-    if count[1] > 0
-        for i in 0:count[1]-1
+    if pagesNum > 0
+        for i in 0:pagesNum-1
             query = "search?start=$(start + ( i * 100 ))&rows=100&q=ingestiondate:$query2"
             Downloads.download( "https://scihub.copernicus.eu/dhus/$query", iob, headers = [ "Authorization" => "Basic $authToken" ] )
         end
     end
-    if count[2] > 0
-        query = "search?start=$(start + (count[1] * 100))&rows=$(count[2])&q=ingestiondate:$query2"
+    if productsNum > 0
+        query = "search?start=$(start + (pagesNum * 100))&rows=$(productsNum)&q=ingestiondate:$query2"
         Downloads.download( "https://scihub.copernicus.eu/dhus/$query", iob, headers = [ "Authorization" => "Basic $authToken" ] )
     end
     return iob
@@ -204,7 +203,7 @@ end
 Generate the DataFrame containing the data of `maxNumber` products using `username` and `password` for authentication, if `maxNumber` is not specified, the df will include all available products,
 if `start` is specified the downloaded data will begin from that index
 """
-function getProductsInfo( userame::AbstractString, password::AbstractString, aoi::AbstractString; numMonths::Integer=6, start::Integer=0, max::Union{Integer, Nothing}=nothing, last::Bool=false )::DataFrame
+function getProductsInfo( userame::AbstractString, password::AbstractString, aoi::AbstractString; numMonths::Integer=6, start::Integer=0, max::Union{Integer, Nothing}=nothing, fromlast::Bool=false )::DataFrame
  # Download "maxNumber" pages and return the buffer containing them
     io = getProductsBuffer(userame, password, aoi, numMonths=numMonths, start=start, max=max, last=last)
  # Create a vector of dictionaries of the products
@@ -227,7 +226,7 @@ function getProductsInfo( userame::AbstractString, password::AbstractString, aoi
     sort!( data, [:orderNumber] )
     select!( data, Not(:orderNumber) )
  # Create the column indicating wether a product has been downloaded 
-    insertcols!( data, ( :available => fill( true, nrow(data) ) ) ),( :downloaded => fill( false, nrow(data) ) )
+    insertcols!( data, (:available => fill(true, nrow(data))), (:downloaded => fill(false, nrow(data))) )
     return data
 end
 
@@ -270,42 +269,25 @@ end
 
 Mark all products in "fileIDs" as already downloaded
 """
-function setDownloaded( fileIDs::Union{ AbstractString, AbstractVector{AbstractString} } )
-    updateProductsVal( fileIDs, "products", "downloaded", true )
-end
-
-
-
-"""
-    setUnavailable( fileID::Union{ AbstractString, AbstractVector{AbstractString} } )
-
-Mark all products in "fileIDs" as unavailable
-"""
-function setUnavailable( fileIDs::Union{ AbstractString, AbstractVector{AbstractString} } )
-    updateProductsVal( fileIDs, "products", "available", false )
+function setDownloaded( data_path::AbstractString, fileIDs::Union{ AbstractString, AbstractVector{AbstractString} } )
+    data = CSV.read(data_path)
+    data.downloaded[ data.uuid in fileIDs ] = true
+    return nothing
 end
 
 
 
 
-
-
-
-
-
-
-
-
 """
-    checkAvailabile( data_path::AbstractString, username::AbstractString, password::AbstractString )
+    updateAvailability( data_path::AbstractString, username::AbstractString, password::AbstractString )
 
 Check and update availability of all the products entries contained in the CSV file `data_path` (the `username` and `password` are necessary for the check and update of the values). 
 """
-function checkAvailabile( data_path::AbstractString, username::AbstractString, password::AbstractString )
+function updateAvailability( data_path::AbstractString, username::AbstractString, password::AbstractString )
     # Get the last available product as a DataFrame row
     data = getProductsDF( authenticate(username, password), max=1, last=true  )
     # Load the preexisting data
-    old_data = CSV.read( path, DataFrame )
+    old_data = CSV.read( data_path, DataFrame )
     # Obtain the `uuid` of the last available product
     last_available_id = data[end, :uuid]
     # Obtain the index of the last available product of "old_data"

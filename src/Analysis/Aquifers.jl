@@ -198,27 +198,22 @@ end
 
 
 """
-    run_leaching(; dem_file::String, source_file::String, area_file::String="", contaminantCASNum::String, concentration::Float64, tolerance::Int64=2, 
-                   aquifer_depth::Float64, aquifer_flow_direction::Int64, mean_rainfall::Float64, texture::String, resolution::Int64, time::Int64=1,
-                   orthogonal_width::Float64=10000.0, soil_density::Float64=1.70, source_thickness::Float64=1.0, darcy_velocity::Float64=0.000025,
-                   mixing_zone_depth::Float64=1.0, decay_coeff::Float64=0.0, algorithm::Symbol=:fickian, option::Symbol=:continuous,
-                   output_path::String=".\\aquifer_output_model.tiff" )
+    run_aquifer( dem_file::String, source_file::String, aquifer_area_file::String, contaminantCASNum::String, concentration::Float64, aquifer_depth::Float64, aquifer_flow_direction::Int64, mean_rainfall::Float64, texture::String; tolerance::Int64=2, time::Int64=1, orthogonal_width::Float64=10000.0, soil_density::Float64=1.70, source_thickness::Float64=1.0, darcy_velocity::Float64=0.000025, mixing_zone_depth::Float64=1.0, decay_coeff::Float64=0.0, algorithm::Symbol=:fickian, option::Symbol=:continuous, output_path::String=".\\aquifer_output_model.tiff" )
 
-Run the simulation of leaching and dispersion of contaminants in an aquifer, returning a map of the possible worst case spreading of the contaminants.
+Run the simulation of leaching and dispersion of contaminants in an aquifer, returning a map of the possible spread of the contaminant.
 
 # Arguments
-- `dtm_file::String`: path to the raster of terrain.
+- `dem_file::String`: path to the raster of terrain.
 - `source_file::String`: path to the shapefile containing source point of the contaminants.
-- `area_file::String=""`: path to the shapefile containing the poligon delimiting the area for the analysis.
+- `aquifer_area_file::String`: path to the shapefile containing the polygon giving the natural delimitation of the area for the analysis (the borders of the acquifer).
 - `contaminantCASNum::String`: CAS number identifier of a substance.
 - `concentration::Float64`: concentration of the contaminants at the source.
-- `tolerance::Int64=2`: value used to determine wether the concentration of pollutant in a cell is relevant.
-    Specifically, a concentration value is considered relevant if its value is within "tolerance" orders of magnitute from the concentration on other cells.
 - `aquifer_depth::Float64`: depth of the aquifer in meters.
 - `aquifer_flow_direction::Int64`: direction of the water flow within the aquifer as an angle in degrees.
 - `mean_rainfall::Float64`: average rainfall volume.
 - `texture::String`: type of terrain at the source.
-- `resolution::Float64`: dimension of a cell for the analysis.
+- `tolerance::Int64=2`: value used to determine wether the concentration of pollutant in a cell is relevant.
+    Specifically, a concentration value is considered relevant if its value is within "tolerance" orders of magnitute from the concentration on other cells.
 - `time::Int64=1`: starting time.
 - `orthogonal_width::Float64=10000.0`
 - `soil_density::Float64=1.70`: density of the terrain.
@@ -228,74 +223,13 @@ Run the simulation of leaching and dispersion of contaminants in an aquifer, ret
 - `decay_coeff::Float64=0.0`
 - `algorithm::Symbol=:fickian`: type of algorithm to be used.
 - `option::Symbol=:continuous`: second option to define the kind o algorithm to use.
-- `output_path::String=".\\aquifer_output_model.tiff": output file path. 
-"""#=
-function run_leaching(; dem_file::String, source_file::String, area_file::String="", contaminantCASNum::String, concentration::Float64, tolerance::Int64=2, 
-                        aquifer_depth::Float64, aquifer_flow_direction::Int64, mean_rainfall::Float64, texture::String, resolution::Float64, time::Int64=1,
-                        orthogonal_width::Float64=10000.0, soil_density::Float64=1.70, source_thickness::Float64=1.0, darcy_velocity::Float64=0.000025,
-                        mixing_zone_depth::Float64=1.0, decay_coeff::Float64=0.0, algorithm::Symbol=:fickian, option::Symbol=:continuous,
-                        output_path::String=".\\aquifer_output_model.tiff" )
+- `output_path::String=".\\aquifer_output_model.tiff": output file path.
 
-    if algorithm ∉ [:fickian, :domenico]
-        throw(DomainError(algorithm, "`algorithm` must either be `:fickian` or `:domenico`"))
-    end
-
-    if option ∉ [:pulse, :continuous]
-        throw(DomainError(option, "`option` must either be `:continuous` or `:pulse`"))
-    end
-
-    # Read values concerning the substance that will be used in the analysis, from the database.
-    henry_const, soil_adsorption = FunctionsDB.substance_extract(contaminantCASNum, ["c_henry", "koc_kd"])[1, :]
-    # Check for actual results.
-    if isempty(henry_const) && isempty(soil_adsorption)
-        throw(DomainError(contaminantCASNum, "Analysis error, check input parameters"))
-    end
-
-    # Read values concerning the texture of the terrain that will be used in the analysis, from the database.
-    volumetric_air_content, volumetric_water_content, effective_infiltration, tera_e, grain = FunctionsDB.texture_extract(texture, ["tot_por", "c_water_avg", "ief", "por_eff", "grain"])[1, :]
-    # Check for actual results.
-    if any(isempty.([volumetric_air_content, volumetric_water_content, effective_infiltration, tera_e, grain]))
-        throw(DomainError(texture, "Analysis error, check input parameters"))
-    end
-
-    # Initialize spatial data, checking wether there is a target area to initialize or not.
-    if !isempty(area_file)
-        src_geom, trg_geom, dem = Functions.verify_and_return(source_file, area_file, dem_file)
-    else
-        src_geom, dem = Functions.verify_and_return(source_file, dem_file)
-    end
-
-    effective_infiltration *= (mean_rainfall / 10.0)^2.0
-    # Find the location of the source in the raster (as raster indexes).
-    x_source = agd.getx(src_geom, 0)
-    y_source = agd.gety(src_geom, 0)
-    r_source, c_source = Functions.toIndexes(dem, x_source, y_source)
-    # Create an instance of the first object used to aid in the analysis process.
-    # Its main use is to gather values and the physical computations in one place.
-    element = Leach( henry_const, volumetric_water_content, volumetric_air_content, soil_adsorption, effective_infiltration, soil_density, source_thickness, aquifer_depth,
-                     darcy_velocity, mixing_zone_depth, orthogonal_width )
-    calc_kw!(element)
-    calc_ldf!(element)
-    calc_sam!(element)
-    secondary_source_concentration = concentration * calc_LF!(element)
-    # Object that will be effectively used during the analysis and passed as a parameter.
-     # The expression that computes the angle fo flow ( "(360 + 180 - aquifer_flow_direction) % 360" ) is there to translate a cartesian angle in one valid for a raster.
-      # In a raster each angle will be mirrored along the Y axis thus the expression above is used to counterbalance this shift. 
-    daf = DAF( secondary_source_concentration, x_source, y_source, 0.0, 0.0, decay_coeff, darcy_velocity, soil_adsorption, soil_density, tera_e, orthogonal_width, time,
-               (540 - aquifer_flow_direction) % 360, algorithm, option )
-    # Run the function that executes the analysis chosing the version based on the presence of a target area.
-     # The function returns a vector of triples rppresenting the relevant cells and their corresponding values.
-    points = !isempty(area_file) ? Functions.analysis_expand(r_source, c_source, concentration, tolerance, dem, trg_geom, daf) : 
-        Functions.analysis_expand(r_source, c_source, concentration, tolerance, dem, daf)
-    # Create the resulting raster in memory.
-    Functions.create_raster_as_subset(dem, points, output_path)
-end
-=#
-function run_leaching( dem_file::String, source_file::String, aquifer_area_file::String, contaminantCASNum::String,
-                       concentration::Float64, aquifer_depth::Float64, aquifer_flow_direction::Int64, mean_rainfall::Float64, texture::String;
-                       tolerance::Int64=2, time::Int64=1, orthogonal_width::Float64=10000.0, soil_density::Float64=1.70, source_thickness::Float64=1.0,
-                       darcy_velocity::Float64=0.000025, mixing_zone_depth::Float64=1.0, decay_coeff::Float64=0.0, algorithm::Symbol=:fickian, option::Symbol=:continuous,
-                       output_path::String=".\\aquifer_output_model.tiff" )
+"""
+function run_aquifer( dem_file::String, source_file::String, aquifer_area_file::String, contaminantCASNum::String, concentration::Float64, aquifer_depth::Float64,
+                        aquifer_flow_direction::Int64, mean_rainfall::Float64, texture::String; tolerance::Int64=2, time::Int64=1, orthogonal_width::Float64=10000.0,
+                        soil_density::Float64=1.70, source_thickness::Float64=1.0, darcy_velocity::Float64=0.000025, mixing_zone_depth::Float64=1.0, decay_coeff::Float64=0.0,
+                        algorithm::Symbol=:fickian, option::Symbol=:continuous, output_path::String=".\\aquifer_output_model.tiff" )
 
     if tolerance < 1 || tolerance > 4
         throw(DomainError(tolerance, "`tolerance` value must be between 1 and 4"))
@@ -352,10 +286,38 @@ function run_leaching( dem_file::String, source_file::String, aquifer_area_file:
     println(now() - start)
 end
 
-function run_leaching( dem_file::String, source_file::String, aquifer_area_file::String, target_area_file::String, contaminantCASNum::String, concentration::Float64,
+"""
+    run_aquifer( dem_file::String, source_file::String, aquifer_area_file::String, target_area_file::String, contaminantCASNum::String, concentration::Float64, aquifer_depth::Float64, aquifer_flow_direction::Int64, mean_rainfall::Float64, texture::String; time::Int64=1, orthogonal_width::Float64=10000.0, soil_density::Float64=1.70, source_thickness::Float64=1.0, darcy_velocity::Float64=0.000025, mixing_zone_depth::Float64=1.0, decay_coeff::Float64=0.0, algorithm::Symbol=:fickian, option::Symbol=:continuous, output_path::String=".\\aquifer_output_model.tiff" )::ArchGDAL.IDataset{Float32}
+
+Run the simultation on the area delimited by the polygon at `target_area_file`, the process does not require a tollerance value.
+
+# Arguments
+- `dem_file::String`: path to the raster of terrain.
+- `source_file::String`: path to the shapefile containing source point of the contaminants.
+- `aquifer_area_file::String`: path to the shapefile containing the polygon giving the natural delimitation of the area for the analysis (for example the border of a lake).
+- `target_area_file::String`: path to the shapefile containing the polygon delimiting a specific area to be checked.
+- `contaminantCASNum::String`: CAS number identifier of a substance.
+- `concentration::Float64`: concentration of the contaminants at the source.
+- `aquifer_depth::Float64`: depth of the aquifer in meters.
+- `aquifer_flow_direction::Int64`: direction of the water flow within the aquifer as an angle in degrees.
+- `mean_rainfall::Float64`: average rainfall volume.
+- `texture::String`: type of terrain at the source.
+- `time::Int64=1`: starting time.
+- `orthogonal_width::Float64=10000.0`
+- `soil_density::Float64=1.70`: density of the terrain.
+- `source_thickness::Float64::Float64=1.0`: thickness of the terrain layer at the source.
+- `darcy_velocity::Float64=0.000025`
+- `mixing_zone_depth::Float64=1.0`
+- `decay_coeff::Float64=0.0`
+- `algorithm::Symbol=:fickian`: type of algorithm to be used.
+- `option::Symbol=:continuous`: second option to define the kind o algorithm to use.
+- `output_path::String=".\\aquifer_output_model.tiff": output file path.
+
+"""
+function run_aquifer( dem_file::String, source_file::String, aquifer_area_file::String, target_area_file::String, contaminantCASNum::String, concentration::Float64,
                        aquifer_depth::Float64, aquifer_flow_direction::Int64, mean_rainfall::Float64, texture::String; time::Int64=1, orthogonal_width::Float64=10000.0,
-                       soil_density::Float64=1.70, source_thickness::Float64=1.0, darcy_velocity::Float64=0.000025, mixing_zone_depth::Float64=1.0,
-                       decay_coeff::Float64=0.0, algorithm::Symbol=:fickian, option::Symbol=:continuous, output_path::String=".\\aquifer_output_model.tiff" )
+                       soil_density::Float64=1.70, source_thickness::Float64=1.0, darcy_velocity::Float64=0.000025, mixing_zone_depth::Float64=1.0, decay_coeff::Float64=0.0,
+                       algorithm::Symbol=:fickian, option::Symbol=:continuous, output_path::String=".\\aquifer_output_model.tiff" )
 
     if algorithm ∉ [:fickian, :domenico]
         throw(DomainError(algorithm, "`algorithm` must either be `:fickian` or `:domenico`"))
