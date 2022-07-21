@@ -1059,7 +1059,7 @@ function run_noise(; dem_file::String, terrain_impedences_file::String="", sourc
     end
     # Define the geotranformation for the raster.
     geotransform = agd.getgeotransform(dtm)
-    geotransform[[1, 4]] = Functions.toCoords(geotransform, row_begin, col_begin)
+    geotransform[[1, 4]] .= Functions.toCoords(geotransform, row_begin, col_begin)
     # Create the raster in memory.
     Functions.writeRaster(intensity_matrix, agd.getdriver("GTiff"), geotransform, dtm.crs.val, noData, output_path)
 end
