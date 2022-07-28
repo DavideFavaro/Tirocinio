@@ -25,8 +25,8 @@ const agd = ArchGDAL
 mutable struct River
   ma::Float64  # Pollutant mass
   t::Float64   # Time
-  x::Float64
-  dl::Float64
+  x::Float64   # Distance from source
+  dl::Float64  #
   v::Float64   # Speed
   w::Float64   # Hydraulic section
   k::Float64   # Decay coefficient
@@ -55,239 +55,143 @@ end
 
 
 
-         #                                                                                                                         min         min_end   min_int
-function run_river( dem_file::AbstractString, slope_file::AbstractString, river_file::AbstractString, source_file::AbstractString, start_time, end_time, time_interval,
-                  #                    C / conc                radius                                                   w / sez                         k
-                    resolution::Int64, concentration::Float64, mean_hydraulic_radius::Float64, fickian_x::Float64=0.05, hydraulic_section::Float64=1.0, decay_coeff::Float64=0.0,
-                  # manning
-                    manning_coeff::Float64=0.05, output_path::AbstractString )
-    
- """ CONTROLLO SUI RASTER `dem` E `slope`
-    if not self.slope.isValid():
-        QMessageBox.warning(self,"Warning", u"La mappa delle pendenza è mancante o non valida" )
-        return False
+"""
+"""
+#=
+function run_river( dem_file::String, source_file::String, river_file::String, output_directory_path::String, start_time::Int64, time_interval::Int64,
+                    end_time::Int64, concentration::Float64, mean_hydraulic_radius::Float64; slope_file::String="", resolution::Float64 = 25.0, fickian_x::Float64=0.05,
+                    hydraulic_section::Float64=1.0, decay_coeff::Float64=0.0, manning_coeff::Float64=0.05 )
+ 
+    any(
+        <=(0),
+        [ time_interval, end_time, concentration, mean_hydraulic_radius, fickian_x, hydraulic_section, manning_coeff ]
+    ) && throw(DomainError("All numeric values must be positive."))
+    start_time < 0 && throw(DomainError(start_time, "`start_time` must be positive."))
+    decay_coeff < 0 && throw(DomainError(decay_coeff, "`decay_coeff` must be positive."))
+    start_time >= end_time && throw(DomainError("`end_time` must be greater than `start_time`"))
 
-    if not self.dem.isValid():
-        QMessageBox.warning(self,"Warning", u"Il DEM è mancante o non valido" )
-        return False
- """
+    src_geom, dem = Functions.check_and_return_spatial_data(source_file, dem_file)
 
-    src_geom = agd.getgeom(collect(agd.getlayer(agd.read(source_file), 0))[1])
+    river = agd.read(river_file)
+    # Keep the original, unaltered geometries
+    river_geom = agd.getgeom(collect(agd.getlayer(river, 0))[1])
 
-    if agd.geomdim(src_geom) != 0
-        throw(DomainError(source_file, "The source shapefile must contain a point."))
+    if agd.geomdim(river_geom) != 1
+        throw(DomainError(river_file, "The river shapefile geometry in not valid."))
     end
 
-   river_layer = agd.getlayer(agd.read(river_file), 0)
-   river_geoms = agd.getgeom.(collect(river_layer))
+    # Copy of the river geometry to segmentize
+    river_layer = agd.getlayer(agd.copy(river), 0)
+    river_geom2 = agd.getgeom(collect(river_layer)[1])
 
-   if any( geom -> agd.geomdim(geom != 1), river_geoms)
-      throw(DomainError(river_file, "The river shapefile geometry in not valid."))
-   end
+    demband = agd.getband(dem, 1)
 
-   refsys = agd.getspatialref(src_geom)
+    refsys = agd.getspatialref(src_geom)
 
-   dem = agd.read(dem_file)
-   slope = agd.read(slope_file)
+    slope = isempty(slope_file) ? fill(0.0f0, size(demband)) : agd.read(slope_file) 
+    slopeband = isempty(slope_file) ? slope : agd.getband(slope, 1)
 
-   if agd.getspatialref(river_layer) != refsys || agd.importWKT(agd.getproj(slope)) != refsys || agd.importWKT(agd.getproj(dem)) != refsys
-      throw(DomainError("The reference systems are not uniform. Aborting analysis."))
-   end
-
-   if start_time >= end_time
-      throw(DomainError("`end_time` must be greater than `start_time`"))
-   end
-
+    if agd.toWKT(agd.getspatialref(river_layer)) != agd.toWKT(refsys) # || agd.getproj(slope) != agd.toWKT(refsys)
+        throw(DomainError("The reference systems are not uniform. Aborting analysis."))
+    end
 
  # messaggio+='ALGORITMO UTILIZZATO: Fickian Mixing Process (Hemond, Harold F., and Elizabeth J. Fechner. Chemical fate and transport in the environment. Elsevier, 2014.)\n\n'
 
-    start_sec, end_sec, int_sec = 60 .* ( time_start, time_end, time_interval )
-    #calcolo ciclo intervallo temporale di analisi
-    cicles = ( (end_time - start_time) / time_interval ) + 1
-        
- # CREDO SIA L'EQUIVALENTE DI:
-    #   feature = next(self.river.getFeatures())
-    #   geomfeature = feature.geometry()
-    #   features = self.river.getFeatures()
-    features = agd.getgeom.(collect(layer))
+    start_sec, end_sec, int_sec = 60 .* [start_time, end_time, time_interval]
     x_source = agd.getx(src_geom, 0)
     y_source = agd.gety(src_geom, 0)
-    r_source, c_source = toIndexes(dem, x_source, y_source)
+    r_source, c_source = Functions.toIndexes(dem, x_source, y_source)
 
- # DEVO TROVARE L'EQUIVALENTE DI INTERPOLATE
-    firstpoint = features[1].interpolate(0)
+    agd.segmentize!(river_geom2, 1.0)
 
-    x_first = agd.getx(firstpoint, 0)
-    y_first = agd.gety(firstpoint, 0)
-    r_first ,c_first = toIndexes(dem, x_first, y_first) 
+    x_first, y_first = agd.getpoint(river_geom2, 0)
+    r_first, c_first = Functions.toIndexes(dem, x_first, y_first) 
  
-    slopeband = agd.getband(slope, 1)
-
-    demband = agd.getband(dem, 1)
     demfirstpoint = demband[r_first, c_first]
     demsource = demband[r_source, c_source]
 
-    trend = 0
+    trend = false
     old_x = x_first
     old_r = r_first
     old_y = y_first  
     old_c = c_first  
     if demfirstpoint >= demsource
-        trend = 1
+        trend = true
         old_x = x_source
         old_r = r_source
         old_y = y_source
         old_c = c_source       
     end
- 
-    for geom in features
-        length = agd.geomlength(geom)
+
+    vl = agd.createlayer(name="vl", geom=agd.wkbPoint, spatialref=refsys)
+    agd.addfielddefn!(vl, "distance", agd.OFTInteger)
+    agd.addfielddefn!(vl, "meanv", agd.OFTReal)
+
+    vline = agd.createlayer(name="vline", geom=agd.wkbLineString, spatialref=refsys)
+    agd.addfielddefn!(vline, "distance", agd.OFTInteger)
+    agd.addfielddefn!(vline, "meanv", agd.OFTReal)
+
+    for sec_cicli in start_sec:int_sec:end_sec 
+        fieldname = "conc$(convert(Int64, sec_cicli/60))"
+        agd.addfielddefn!(vl, fieldname, agd.OFTReal)
+        agd.addfielddefn!(vline, fieldname, agd.OFTReal)
+    end
+
+    for i in 1:agd.ngeom(river_geom)-1
+        len = Functions.edistance(agd.getpoint(river_geom, i-1)[1:2], agd.getpoint(river_geom, i)[1:2])
         avanzamento = 1
         realdistance = 0
-        feats = [] 
-        featlines=[] 
-        list_result=[]
- 
-        #   start_time = time.time()  
-        
-        if outputname == ""
-            outputname = "concentrazione"
-        end
+        count_index = 0
+        list_result = Float64[]
+        list_mean_velocity = Float64[]
 
-        
-     """ CREA UN LAYER
-        vl = QgsVectorLayer("Point?crs=EPSG:"+self.refsys,self.outputname, "memory")       
-        pr = vl.dataProvider()  
-        prfield = pr.addAttributes( [ QgsField("distance", QVariant.Int) ] )            
-        prfield2 = pr.addAttributes( [ QgsField("vmedia", QVariant.Double) ] )
-     """
-     # NON FUNZIONA
-        vl = agd.createlayer( outputname, agd.wkbPoint, refsys )
-
-
-        list_vmedia = []
-
-
-
-     """ CREA UN'ALTRO LAYER
-        vline = QgsVectorLayer("LineString?crs=EPSG:"+self.refsys, self.outputname, "memory")
-        prline = vline.dataProvider()
-        prlfield=prline.addAttributes( [ QgsField("distance", QVariant.Int) ] )            
-        prlfield2=prline.addAttributes( [ QgsField("vmedia", QVariant.Double) ] )
-     """
-     # NON FUNZIONA
-        vline = agd.createlayer( outputname, agd.wkbLineString, refsys )
-
-
-
-        sec_cicli = start_sec
-        checknumcampo = 0
-        for sec_cicli in start_sec:int_sec:end_sec 
-            checknumcampo += 1
-            fieldname = "conc $(sec_cicli/60)"
-            
-         """ AGGIUNGE CAMPI AI LAYER CREATI
-            prfield1 = pr.addAttributes( [ QgsField(nomecampo, QVariant.Double) ] )
-            prlfield1 = prline.addAttributes( [ QgsField(nomecampo, QVariant.Double) ] )
-         """
-            agd.addfielddefn!(vl, fieldname, agd.OFTReal )
-            agd.addfielddefn!(vline, fieldname, agd.OFTReal )
-        end
-
-
-     """ CREA UNA NUOVA FEATURE E LA AGGIUNGE A vline
-        fetline = QgsFeature()
-        fetline.setGeometry( QgsGeometry.fromPolyline( [s_geom] ))
-        prline.addFeatures( [ fetline ] )
-        geomline = fetline.geometry()
-     """
-        fetline = agd.createfeature( x -> x, vline )
-        agd.setgeom!(fetline, agd.wkbMultiLineString)
-        agd.addfeature!(vline, fetline)
-        geomline = agd.getgeom(fetline)
-
-
-
-        controllo = 1
-        if trend == 1
-            controllo = 0
-        end
-
-        for currentdistance in 1:length
-            #   point = geom.interpolate(currentdistance)
-            point = agd.getpoint(geom, currentdistance)
-            x = agd.getx(point, 0)
-            y = agd.gety(point, 0)
-
-            dist = √( (x - x_source)^2 + (y - y_source)^2 )
-            if trend == 1 && dist <= 1
-                controllo = 1
+        control = !trend
+        for currentdistance in 1:convert(Int64, len)
+            x, y = agd.getpoint(river_geom2, currentdistance)
+            dist = Functions.edistance(x_source, y_source, x, y)
+            if trend && dist <= 1
+                control = true
             end
-            if trend == 0 && dist <= 1
-                controllo = 0
+            if !trend && dist <= 1
+                control = false
             end
 
-            if controllo == 1
+            if control
                 if avanzamento == resolution
-                    realdistance = realdistance + resolution
+                    realdistance += resolution
                     count_index += 1
-                    z = slopeband[x, y]
-                    v_inst = ( mean_hydraulic_radius^(2/3) * √(z/100) ) * manning_coeff
-                    push!( list_vmedia, v_inst )
-                    mean_v = sum(list_vmedia) / count_index
+                    z = slopeband[Functions.toIndexes(dem, x, y)...]
+                    push!(
+                        list_mean_velocity,
+                        ( mean_hydraulic_radius^(2/3) * √(z/100) ) * manning_coeff
+                    )
+                    mean_velocity = sum(list_mean_velocity) / count_index
 
-                 """ STA INIZIALIZZANDO DELLE FEATURES
-                    fet = QgsFeature()
-                    fet.initAttributes(2+cicli)
-
-                    fetline = QgsFeature()
-                    fetline.initAttributes(2+cicli)
-
-                    fet.setAttribute(0,realdistance)
-                    fet.setAttribute(1,self.vmedia)
-
-                    fetline.setAttribute(0,realdistance)
-                    fetline.setAttribute(1,self.vmedia) 
-                 """
-                    fet = agd.createfeature(x->x, vl)
-                    agd.fillunsetwithdefault!(fet)
-                    agd.setfield!( Ref(fet), [0, 1], [realdistance, vmedia])
-
-                    fetline = agd.createfeature(x->x, vline)
-                    agd.fillunsetwithdefault!(fetline)
-                    agd.setfield!( Ref(fetline), [0, 1], [realdistance, vmedia])
-
-                    for (cicle, t) in enumerate(start_sec:int_sec:end_sec)
-                        element = River( concentration, t, realdistance, fickian_x, mean_v, hydraulic_section, decay_coeff )                    
-                        finalC = calc_concentration!(element)
-                        if cicle == 1
-                            push!( list_result, Cfinal )
-                        end
-
-                     """ AGGIORNA I VALORI DELLE FEATURES
-                        fet.setAttribute(1+ciclo,Cfinal)
-                        fetline.setAttribute(1+ciclo,Cfinal)
-                     """
-                        agd.setfield!(fet, cicle+1, finalC )
-                        agd.setfield!(fetline, cicle+1, finalC )
+                    for t in start_sec:int_sec:end_sec
+                        element = River( concentration, t, realdistance, fickian_x, mean_velocity, hydraulic_section, decay_coeff )                     
+                        push!(list_result, calc_concentration!(element))
                     end
-                    
-                 """ AGGIORNA I VALORI DELLA FEATURE(?) E NE CAMBIA LA GEOMETRIA 
-                    vl.updateFeature(fet)
-                    fet.setGeometry(point)
-                 """
-                    agd.setgeom!(fet, point)
 
+                    agd.createfeature(vl) do fet
+                        agd.setfield!(fet, 0, realdistance)
+                        agd.setfield!(fet, 1, mean_velocity)
+                        for j in 1:length(start_sec:int_sec:end_sec)
+                            agd.setfield!(fet, j+1, list_result[j])
+                        end
+                        agd.setgeom!(fet, agd.createpoint(x, y))
+                        agd.addfeature!(vl, fet)
+                    end
 
-                 """ COME SOPRA
-                    fetline.setGeometry( QgsGeometry.fromPolyline( [QgsPoint(old_x,old_y),QgsPoint(x,y)] ))
-                    vline.updateFeature(fetline)
-                 """
-                    line = agd.createlinestring( Flloat64.([old_x, old_y]), Flloat64.([x, y]) )
-                    agd.setgeom!(fetline, line)
-
-                    push!(feats, fet)
-                    push!(featlines, fetline)
+                    agd.createfeature(vline) do fetline
+                        agd.setfield!(fetline, 0, realdistance)
+                        agd.setfield!(fetline, 1, mean_velocity)
+                        for j in 1:length(start_sec:int_sec:end_sec)
+                            agd.setfield!(fetline, j+1, list_result[j])
+                        end
+                        line = agd.createlinestring([ (old_x, old_y), (x, y) ])
+                        agd.setgeom!(fetline, line)
+                        agd.addfeature!(vline, fetline)
+                    end
 
                     old_x = x
                     old_y = y
@@ -295,30 +199,180 @@ function run_river( dem_file::AbstractString, slope_file::AbstractString, river_
                 end
                 avanzamento += 1
             end
-        end    
-
-        agd.addfeature!.(Ref(vl), feats)
-        agd.addfeature!.(Ref(vline), featlines)
-
-     """ AGGIUNGE I VETTORI APPENA CREATI
-        QgsProject.instance().addMapLayer(vl)
-        QgsProject.instance().addMapLayer(vline)
-     """
-     """ PIRNT DI COSE
-        tempoanalisi=time.time() - start_time
-        tempostimato=time.strftime("%H:%M:%S", time.gmtime(tempoanalisi))
-        messaggio="---------------------------------\n"
-        messaggio+="Fine modellazione\n"
-        messaggio+="\nTempo di analisi: "+tempostimato+"\n"
-        messaggio+="---------------------------------\n\n"
-        self.console.appendPlainText(messaggio)             
-     """
-     """ NON SO COSA FACCIA QUESTA PARTE
-        self.tab_2.setEnabled(True)
-
-        self.run_temp_river()
-     """
+        end
     end
+    agd.create(output_directory_path*"\\points.shp", driver=agd.getdriver("ESRI Shapefile")) do points_dataset
+        agd.copy(vl, dataset=points_dataset)
+    end
+    agd.create(output_directory_path*"\\lines.shp", driver=agd.getdriver("ESRI Shapefile")) do lines_dataset
+        agd.copy(vline, dataset=lines_dataset)
+    end
+    return nothing
 end
+
+=#
+# points_output_path::String, lines_output_path::String,
+function run_river( dem_file::String, source_file::String, river_file::String, output_directory_path::String, start_time::Int64, time_interval::Int64,
+                    end_time::Int64, concentration::Float64, mean_hydraulic_radius::Float64; slope_file::String="", resolution::Float64 = 25.0, fickian_x::Float64=0.05,
+                    hydraulic_section::Float64=1.0, decay_coeff::Float64=0.0, manning_coeff::Float64=0.05 )
+ 
+    any(
+        <=(0),
+        [ time_interval, end_time, concentration, mean_hydraulic_radius, fickian_x, hydraulic_section, manning_coeff ]
+    ) && throw(DomainError("All numeric values must be positive."))
+    start_time < 0 && throw(DomainError(start_time, "`start_time` must be positive."))
+    decay_coeff < 0 && throw(DomainError(decay_coeff, "`decay_coeff` must be positive."))
+    start_time >= end_time && throw(DomainError("`end_time` must be greater than `start_time`"))
+
+    src_geom, dem = Functions.check_and_return_spatial_data(source_file, dem_file)
+
+    river = agd.read(river_file)
+    # Keep the original, unaltered geometries
+    river_geom = agd.getgeom(collect(agd.getlayer(river, 0))[1])
+
+    if agd.geomdim(river_geom) != 1
+        throw(DomainError(river_file, "The river shapefile geometry in not valid."))
+    end
+
+    # Copy of the river geometry to segmentize
+    river_layer = agd.getlayer(agd.copy(river), 0)
+    river_geom2 = agd.getgeom(collect(river_layer)[1])
+
+    demband = agd.getband(dem, 1)
+
+    refsys = agd.getspatialref(src_geom)
+
+    slope = isempty(slope_file) ? fill(0.0f0, size(demband)) : agd.read(slope_file) 
+    slopeband = isempty(slope_file) ? slope : agd.getband(slope, 1)
+
+    if agd.toWKT(agd.getspatialref(river_layer)) != agd.toWKT(refsys) # || agd.getproj(slope) != agd.toWKT(refsys)
+        throw(DomainError("The reference systems are not uniform. Aborting analysis."))
+    end
+
+ # messaggio+='ALGORITMO UTILIZZATO: Fickian Mixing Process (Hemond, Harold F., and Elizabeth J. Fechner. Chemical fate and transport in the environment. Elsevier, 2014.)\n\n'
+
+    start_sec, end_sec, int_sec = 60 .* [start_time, end_time, time_interval]
+    x_source = agd.getx(src_geom, 0)
+    y_source = agd.gety(src_geom, 0)
+    r_source, c_source = Functions.toIndexes(dem, x_source, y_source)
+
+    agd.segmentize!(river_geom2, 1.0)
+
+    x_first, y_first = agd.getpoint(river_geom2, 0)
+    r_first, c_first = Functions.toIndexes(dem, x_first, y_first) 
+ 
+    demfirstpoint = demband[r_first, c_first]
+    demsource = demband[r_source, c_source]
+
+    trend = false
+    old_x = x_first
+    old_r = r_first
+    old_y = y_first  
+    old_c = c_first  
+    if demfirstpoint >= demsource
+        trend = true
+        old_x = x_source
+        old_r = r_source
+        old_y = y_source
+        old_c = c_source       
+    end
+
+    vl = agd.createlayer(name="vl", geom=agd.wkbPoint, spatialref=refsys)
+    agd.addfielddefn!(vl, "distance", agd.OFTInteger)
+    agd.addfielddefn!(vl, "meanv", agd.OFTReal)
+
+    vline = agd.createlayer(name="vline", geom=agd.wkbLineString, spatialref=refsys)
+    agd.addfielddefn!(vline, "distance", agd.OFTInteger)
+    agd.addfielddefn!(vline, "meanv", agd.OFTReal)
+
+    for sec_cicli in start_sec:int_sec:end_sec 
+        fieldname = "conc$(convert(Int64, sec_cicli/60))"
+        agd.addfielddefn!(vl, fieldname, agd.OFTReal)
+        agd.addfielddefn!(vline, fieldname, agd.OFTReal)
+    end
+
+
+
+    len = sum([
+        Functions.edistance(
+            agd.getpoint(river_geom, i-1)[1:2],
+            agd.getpoint(river_geom, i)[1:2]
+        )
+        for i in 1:agd.ngeom(river_geom)-1
+    ])
+    avanzamento = 1
+    realdistance = 0
+    count_index = 0
+    list_result = Float64[]
+    list_mean_velocity = Float64[]
+
+    control = !trend
+    for currentdistance in 1:convert(Int64, len)
+        x, y = agd.getpoint(river_geom2, currentdistance)
+        dist = Functions.edistance(x_source, y_source, x, y)
+        if trend && dist <= 1
+            control = true
+        end
+        if !trend && dist <= 1
+            control = false
+        end
+
+        if control
+            if avanzamento == resolution
+                realdistance += resolution
+                count_index += 1
+                z = slopeband[Functions.toIndexes(dem, x, y)...]
+                push!(
+                    list_mean_velocity,
+                    ( mean_hydraulic_radius^(2/3) * √(z/100) ) * manning_coeff
+                )
+                mean_velocity = sum(list_mean_velocity) / count_index
+
+                for t in start_sec:int_sec:end_sec
+                    element = River( concentration, t, realdistance, fickian_x, mean_velocity, hydraulic_section, decay_coeff )                     
+                    push!(list_result, calc_concentration!(element))
+                end
+
+                agd.createfeature(vl) do fet
+                    agd.setfield!(fet, 0, realdistance)
+                    agd.setfield!(fet, 1, mean_velocity)
+                    for j in 1:length(start_sec:int_sec:end_sec)
+                        agd.setfield!(fet, j+1, list_result[j])
+                    end
+                    agd.setgeom!(fet, agd.createpoint(x, y))
+                    agd.addfeature!(vl, fet)
+                end
+
+                agd.createfeature(vline) do fetline
+                    agd.setfield!(fetline, 0, realdistance)
+                    agd.setfield!(fetline, 1, mean_velocity)
+                    for j in 1:length(start_sec:int_sec:end_sec)
+                        agd.setfield!(fetline, j+1, list_result[j])
+                    end
+                    line = agd.createlinestring([ (old_x, old_y), (x, y) ])
+                    agd.setgeom!(fetline, line)
+                    agd.addfeature!(vline, fetline)
+                end
+
+                old_x = x
+                old_y = y
+                avanzamento = 0
+            end
+            avanzamento += 1
+        end
+    end
+
+
+
+    agd.create(output_directory_path*"\\points.shp", driver=agd.getdriver("ESRI Shapefile")) do points_dataset
+        agd.copy(vl, dataset=points_dataset)
+    end
+    agd.create(output_directory_path*"\\lines.shp", driver=agd.getdriver("ESRI Shapefile")) do lines_dataset
+        agd.copy(vline, dataset=lines_dataset)
+    end
+    return nothing
+end
+
+
 
 end # module

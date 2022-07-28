@@ -23,9 +23,8 @@ const ga = GeoArrays
 const sf = Shapefile
 
 
+
 repeat!( A::AbstractVector, count::Int64 ) = append!( A, repeat(A, count-1) )
-# Functions to find the coordinates of the point resulting from the rotation of "(xp, yp)" by a angle "θ" around "(xc, yc)"
-distance( p0::Tuple{Float64, Float64}, pn::Tuple{Float64, Float64} ) =  √( sum( v -> v^2, pn .- p0 ) )
 
 
 
@@ -1031,11 +1030,11 @@ function run_noise(; dem_file::String, terrain_impedences_file::String="", sourc
             # Arrays of the heigths and the respective coordnates
             heights, impdcs, coords = DDA( dtm, impedences, r0, c0, Functions.rotate_point(point..., r0, c0, α)... )
             # Array of the distances of each point of the profile from the source
-            dists = Float64[ distance((x0, y0), coords[1]) ]
+            dists = Float64[ Functions.edistance(x0, y0, coords[1]...) ]
             # Compute the array of the resulting attenuations for each point of a single profile
             for j in 2:length(heights)
                 # Add to the distance vector as required at the j-th iteration 
-                push!( dists, distance((x0, y0), coords[j]) )
+                push!( dists, Functions.edistance(x0, y0, coords[j]...) )
                 # Current cell
                 r, c = ga.indices(dtm, [coords[j]...])
                 # If the cell should have a value

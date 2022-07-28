@@ -227,35 +227,31 @@ Run the simulation of leaching and dispersion of contaminants in an aquifer, ret
 
 """
 function run_aquifer( dem_file::String, source_file::String, aquifer_area_file::String, contaminantCASNum::String, concentration::Float64, aquifer_depth::Float64,
-                        aquifer_flow_direction::Int64, mean_rainfall::Float64, texture::String; tolerance::Int64=2, time::Int64=1, orthogonal_width::Float64=10000.0,
-                        soil_density::Float64=1.70, source_thickness::Float64=1.0, darcy_velocity::Float64=0.000025, mixing_zone_depth::Float64=1.0, decay_coeff::Float64=0.0,
-                        algorithm::Symbol=:fickian, option::Symbol=:continuous, output_path::String=".\\aquifer_output_model.tiff" )
+                      aquifer_flow_direction::Int64, mean_rainfall::Float64, texture::String; tolerance::Int64=2, time::Int64=1, orthogonal_width::Float64=10000.0,
+                      soil_density::Float64=1.70, source_thickness::Float64=1.0, darcy_velocity::Float64=0.000025, mixing_zone_depth::Float64=1.0, decay_coeff::Float64=0.0,
+                      algorithm::Symbol=:fickian, option::Symbol=:continuous, output_path::String=".\\aquifer_output_model.tiff" )
 
-    if tolerance < 1 || tolerance > 4
-        throw(DomainError(tolerance, "`tolerance` value must be between 1 and 4"))
-    end
-
-    if algorithm ∉ [:fickian, :domenico]
-        throw(DomainError(algorithm, "`algorithm` must either be `:fickian` or `:domenico`"))
-    end
-
-    if option ∉ [:pulse, :continuous]
-        throw(DomainError(option, "`option` must either be `:continuous` or `:pulse`"))
-    end
-
+    concentration <= 0 && throw(DomainError(concentration, "`concentration` must be grater than 0."))
+    aquifer_depth <= 0 && throw(DomainError(aquifer_depth, "`aquifer_depth` must be grater than 0."))
+    mean_rainfall < 0 && throw(DomainError(mean_rainfall, "`mean_rainfall` must be positive."))
+    time < 0 && throw(DomainError(time, "`time` must be positive."))
+    orthogonal_width <= 0 && throw(DomainError(orthogonal_width, "`orthogonal_width` must be grater than 0."))
+    soil_density <= 0 && throw(DomainError(soil_density, "`soil_density` must be grater than 0."))
+    source_thickness <= 0 && throw(DomainError(source_thickness, "`source_thickness` must be grater than 0."))
+    darcy_velocity <= 0 && throw(DomainError(darcy_velocity, "`darcy_velocity` must be grater than 0."))
+    mixing_zone_depth <= 0 && throw(DomainError(mixing_zone_depth, "`mixing_zone_depth` must be grater than 0."))
+    decay_coeff <= 0 && throw(DomainError(decay_coeff, "`decay_coeff` must be grater than 0."))
+    (tolerance < 1 || tolerance > 4) && throw(DomainError(tolerance, "`tolerance` value must be between 1 and 4"))
+    algorithm ∉ [:fickian, :domenico] && throw(DomainError(algorithm, "`algorithm` must either be `:fickian` or `:domenico`"))
+    option ∉ [:pulse, :continuous] && throw(DomainError(option, "`option` must either be `:continuous` or `:pulse`"))
     # Read values concerning the substance that will be used in the analysis, from the database.
     henry_const, soil_adsorption = FunctionsDB.substance_extract(contaminantCASNum, ["c_henry", "koc_kd"])[1, :]
     # Check for actual results.
-    if isempty(henry_const) && isempty(soil_adsorption)
-        throw(DomainError(contaminantCASNum, "Analysis error, check input parameters"))
-    end
-
+    isempty(henry_const) && isempty(soil_adsorption) && throw(DomainError(contaminantCASNum, "Analysis error, check input parameters"))
     # Read values concerning the texture of the terrain that will be used in the analysis, from the database.
     volumetric_air_content, volumetric_water_content, effective_infiltration, tera_e, grain = FunctionsDB.texture_extract(texture, ["tot_por", "c_water_avg", "ief", "por_eff", "grain"])[1, :]
     # Check for actual results.
-    if any(isempty.([volumetric_air_content, volumetric_water_content, effective_infiltration, tera_e, grain]))
-        throw(DomainError(texture, "Analysis error, check input parameters"))
-    end
+    any( isempty, [volumetric_air_content, volumetric_water_content, effective_infiltration, tera_e, grain] ) && throw(DomainError(texture, "Analysis error, check input parameters"))
 
     src_geom, aqf_geom, dem = Functions.check_and_return_spatial_data(source_file, aquifer_area_file, dem_file)
 

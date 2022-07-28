@@ -30,6 +30,16 @@ const agd = ArchGDAL
 
 
 """
+    edistance( p0::Tuple{Float64, Float64}, pn::Tuple{Float64, Float64} )
+
+Compute euclidean distance of point `pn` from point `p0`.
+"""
+edistance( p0::Tuple{Float64, Float64}, pn::Tuple{Float64, Float64} ) =  √( sum( v -> v^2, pn .- p0 ) )
+edistance( x0::Float64, y0::Float64, xn::Float64, yn::Float64 ) =  √( (xn - x0)^2 + (yn - y0)^2 )
+
+
+
+"""
     AbstractAnalysisObject
 
 Abstract supertype of the structs defined to reppresented some kind of analysis to be performed.
@@ -257,65 +267,44 @@ end
 
 
 """
-    create_point( output_file_path::AbstractString, x::AbstractFloat, y::AbstractFloat )
+    create_geometry( output_file_path::AbstractString, type::Symbol, coords::AbstractVector )
 
-Create a vectorial data file, with point geometry, as `output_file_path` from the X and Y coordinates of the point.
+Create a vectorial data file, with `type` geometry, as `output_file_path` from `coords`.
+Different geometries require different structures of `coords` (`F` is a placeholder for a floating point datatype):
+- `:point` requires a `Tuple{F, F}` or a `Vector{F}` of exactly two elements.
+- `:multipoint` requires a `Vector{Tuple{F, F}}` or a `Vector{F}` with an even number of values.
+- `:line` requires a `Vector{Tuple{F, F}}` or a `Vector{F}` with an even number of values.
+- `:multiline` requires a `Vector{Vector{Tuple{F, F}}}`
+- `:polygon` requires a `Vector{Tuple{F, F}}`, to obtain an actual polygon the vector must end with a second instance of its first point.
+- `:multipolygon` requires a `Vector{Vector{Vector{Tuple{F, F}}}}` where the innermost vectors represent lines and the middle ones reppresent single polygons.
+    The considerationabout the closing of a single polygon applies also to the ones composing the multipolygon.
 """
-function create_point( output_file_path::AbstractString, x::AbstractFloat, y::AbstractFloat )
+function create_geometry( output_file_path::AbstractString, type::Symbol, coords::AbstractVector )
+    types = Dict(
+        :point        => ( agd.wkbPoint,           agd.createpoint           ),
+        :multipoint   => ( agd.wkbMultiPoint,      agd.createmultipoint      ),
+        :line         => ( agd.wkbLineString,      agd.createlinestring      ),
+        :multiline    => ( agd.wkbMultiLineString, agd.createmultilinestring ),
+        :polygon      => ( agd.wkbPolygon,         agd.createpolygon         ),
+        :multipolygon => ( agd.wkbMultiPolygon,    agd.createmultipolygon    ),
+    )
+    type ∉ keys(types) && throw(DomainError(type, "The geometry type must be either: `:point`, `:multipoint`, `:line`, `:multiline`, `:polygon` or `:multipolygon`."))
+    
     agd.create(
 	    output_file_path,
 	    driver = agd.getdriver("ESRI Shapefile")
     ) do ds
 	    agd.createlayer(
-		    geom = agd.wkbPoint,
+		    geom = types[type][1],
     	    spatialref = agd.importEPSG(32632)
 	    ) do layer
-		    agd.createfeature(layer) do feature
-    		    agd.setgeom!( feature, agd.createpoint(x, y) )
+            agd.createfeature(layer) do feature
+    		    agd.setgeom!(feature, types[type][2](coords))
 		    end
 		    agd.copy(layer, dataset=ds)
 	    end
     end
     return nothing
-end
-
-function create_point( output_file_path::AbstractString, coords::Tuple{T, T} ) where {T <: AbstractFloat}
-    create_point(output_file_path, coords[1], coords[2])
-end
-
-
-
-"""
-    create_polygon( output_file_path::AbstractString, coords::AbstractVector{Tuple{T, T}} ) where {T <: AbstractFloat}
-
-Create a vectorial data file, with polygon geometry, as `output_file_path` from the X and Y coordinates of the vertexes of the polygon.
-"""
-function create_polygon( output_file_path::AbstractString, coords::AbstractVector{Tuple{T, T}} ) where {T <: AbstractFloat}
-    agd.create(
-        output_file_path,
-        driver = agd.getdriver("ESRI Shapefile")
-    ) do ds
-        agd.createlayer(
-            geom = agd.wkbPolygon,
-            spatialref = agd.importEPSG(32632)
-        ) do layer
-            agd.createfeature(layer) do feature
-                agd.setgeom!( feature, agd.createpolygon(coords) )
-            end
-            agd.copy(layer, dataset=ds)
-        end
-    end
-    return nothing
-end
-
-function create_polygon( output_file_path::AbstractString, coords::Vararg{Tuple{T, T}} ) where {T <: AbstractFloat}
-    vect = colect(coords)
-    create_polygon(output_file_path, vect)
-end
-
-function create_polygon( output_file_path::AbstractString, xs::AbstractVector{T}, ys::AbstractVector{T} ) where {T <: AbstractFloat}
-    vect = [ (x, y) for (x, y) in zip(xs, ys) ]
-    create_polygon(output_file_path, vect)
 end
 
 
@@ -326,7 +315,7 @@ end
 Check wether the shapefile pointed at by the `source_file_path` is valid as source point and the raster pointed at by `raster_file_path` has the
 same coordinate reference system(CRS) as the source, if so return the geometry of the source and the raster, otherwise throw a `DomainError`.
 """
-function check_and_return_spatial_data( source_file_path::AbstractString, raster_file_path::AbstractString; target_area_file_path::String="" )
+function check_and_return_spatial_data( source_file_path::AbstractString, raster_file_path::AbstractString; target_area_file_path::AbstractString="" )
  # Source check
     src_geom = agd.getgeom(collect(agd.getlayer(agd.read(source_file_path), 0))[1])
     if agd.geomdim(src_geom) != 0
