@@ -22,7 +22,7 @@ const agd = ArchGDAL
 
 
 
-mutable struct River
+mutable struct River <: Functions.AbstractAnalysisObject
   ma::Float64  # Pollutant mass
   t::Float64   # Time
   x::Float64   # Distance from source
@@ -39,15 +39,15 @@ end
 
 
 
-function calc_concentration!( r::River )   
+function Functions.compute_concentration!( r::River )   
   c1 = r.x - (r.v * r.t)
-  c1_1 = -(c1^2)
+  c1_1 = -(c1^2.0)
 
-  c2 = c1_1 / ( 4 * r.dl * r.t )
+  c2 = c1_1 / ( 4.0 * r.dl * r.t )
   c2_1 = exp( -r.k * r.t )
   c3 = exp(c2) * c2_1
 
-  c4 = ( r.ma / r.w ) / ( √( 4π * r.dl * r.t ) )
+  c4 = ( r.ma / r.w ) / ( √( 4.0π * r.dl * r.t ) )
 
   r.concentration = c4 * c3
   return r.concentration
@@ -266,48 +266,49 @@ function run_river( dem_file::String, source_file::String, river_file::String, o
 
     trend = false
     old_x = x_first
-    old_r = r_first
-    old_y = y_first  
-    old_c = c_first  
+    old_y = y_first
     if demfirstpoint >= demsource
         trend = true
         old_x = x_source
-        old_r = r_source
         old_y = y_source
-        old_c = c_source       
     end
 
+    start = now()
+
+    # Layer for the values as point geometries
     vl = agd.createlayer(name="vl", geom=agd.wkbPoint, spatialref=refsys)
     agd.addfielddefn!(vl, "distance", agd.OFTInteger)
     agd.addfielddefn!(vl, "meanv", agd.OFTReal)
 
+    # Layer for the values as line geometries
     vline = agd.createlayer(name="vline", geom=agd.wkbLineString, spatialref=refsys)
     agd.addfielddefn!(vline, "distance", agd.OFTInteger)
     agd.addfielddefn!(vline, "meanv", agd.OFTReal)
 
+    # Fields for the over-time-variation of concentration
     for sec_cicli in start_sec:int_sec:end_sec 
         fieldname = "conc$(convert(Int64, sec_cicli/60))"
         agd.addfielddefn!(vl, fieldname, agd.OFTReal)
         agd.addfielddefn!(vline, fieldname, agd.OFTReal)
     end
 
-
-
-    len = sum([
+    # Total length of the river line.
+    len = convert(Int64, sum([
         Functions.edistance(
             agd.getpoint(river_geom, i-1)[1:2],
             agd.getpoint(river_geom, i)[1:2]
         )
         for i in 1:agd.ngeom(river_geom)-1
-    ])
+    ]))
     avanzamento = 1
     realdistance = 0
     count_index = 0
+    last_conc_index = 1
     list_result = Float64[]
     list_mean_velocity = Float64[]
 
     control = !trend
-    for currentdistance in 1:convert(Int64, len)
+    for currentdistance in 1:len
         x, y = agd.getpoint(river_geom2, currentdistance)
         dist = Functions.edistance(x_source, y_source, x, y)
         if trend && dist <= 1
@@ -330,14 +331,14 @@ function run_river( dem_file::String, source_file::String, river_file::String, o
 
                 for t in start_sec:int_sec:end_sec
                     element = River( concentration, t, realdistance, fickian_x, mean_velocity, hydraulic_section, decay_coeff )                     
-                    push!(list_result, calc_concentration!(element))
+                    push!(list_result, Functions.compute_concentration!(element))
                 end
 
                 agd.createfeature(vl) do fet
                     agd.setfield!(fet, 0, realdistance)
                     agd.setfield!(fet, 1, mean_velocity)
-                    for j in 1:length(start_sec:int_sec:end_sec)
-                        agd.setfield!(fet, j+1, list_result[j])
+                    for (j, conc) in enumerate(list_result[last_conc_index:end])
+                        agd.setfield!(fet, j+1, conc)
                     end
                     agd.setgeom!(fet, agd.createpoint(x, y))
                     agd.addfeature!(vl, fet)
@@ -346,14 +347,15 @@ function run_river( dem_file::String, source_file::String, river_file::String, o
                 agd.createfeature(vline) do fetline
                     agd.setfield!(fetline, 0, realdistance)
                     agd.setfield!(fetline, 1, mean_velocity)
-                    for j in 1:length(start_sec:int_sec:end_sec)
-                        agd.setfield!(fetline, j+1, list_result[j])
+                    for (j, conc) in enumerate(list_result[last_conc_index:end])
+                        agd.setfield!(fetline, j+1, conc)
                     end
                     line = agd.createlinestring([ (old_x, old_y), (x, y) ])
                     agd.setgeom!(fetline, line)
                     agd.addfeature!(vline, fetline)
                 end
 
+                last_conc_index += length(list_result[last_conc_index:end])
                 old_x = x
                 old_y = y
                 avanzamento = 0
@@ -361,18 +363,15 @@ function run_river( dem_file::String, source_file::String, river_file::String, o
             avanzamento += 1
         end
     end
-
-
-
     agd.create(output_directory_path*"\\points.shp", driver=agd.getdriver("ESRI Shapefile")) do points_dataset
         agd.copy(vl, dataset=points_dataset)
     end
     agd.create(output_directory_path*"\\lines.shp", driver=agd.getdriver("ESRI Shapefile")) do lines_dataset
         agd.copy(vline, dataset=lines_dataset)
     end
+    println(now() - start)
     return nothing
 end
-
 
 
 end # module

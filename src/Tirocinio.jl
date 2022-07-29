@@ -389,7 +389,7 @@ river = "C:\\Users\\Lenovo\\Desktop\\D\\Risultati Envifate\\Confini\\line\\linea
 out = "C:\\Users\\Lenovo\\Desktop\\D\\Risultati Envifate\\Julia Rasters\\Test tempi\\river"
 rvr.run_river(
     dtm, src, river, out,
-    0, 10, 100, 2000.0, 0.1,
+    0, 10, 60, 2000.0, 0.1,
     fickian_x = 15.0,
     hydraulic_section = 1.0,
     manning_coeff = 14.0
