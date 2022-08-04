@@ -27,11 +27,12 @@ const agd = ArchGDAL
     96-18-4      1,2,3-Tricloropropano    liquido("l")      0.004            8.571e-5             0.0003
 =#
 function main()
-    src = "C:\\Users\\Lenovo\\Documents\\GitHub\\Tirocinio\\resources\\Analysis data\\source_shapefile\\source_32.shp"
-    dtm = "C:\\Users\\Lenovo\\Documents\\GitHub\\Tirocinio\\resources\\Analysis data\\DTM_32.tiff"
-    area = "D:\\Roba del tirocinio\\Risultati Envifate\\Confini\\area.shp"
-    trg = "D:\\Roba del tirocinio\\Risultati Envifate\\Confini\\target.shp"
-    out = "D:\\Roba del tirocinio\\Risultati Envifate\\Julia rasters\\test_" .* deleteat!([ x != "noise" ? x * "_" * y : x
+    path = pwd()
+    src = path*"\\resources\\Analysis data\\source_shapefile\\source_32.shp"
+    dtm = path*"\\resources\\Analysis data\\DTM_32.tiff"
+    area = path*"\\resources\\Analysis data\\area\\area.shp"
+    trg = path*"\\resources\\Analysis data\\target\\target.shp"
+    out = "C:\\Users\\Lenovo\\Desktop\\D\\Risultati Envifate\\Julia Rasters\\test_" .* deleteat!([ x != "noise" ? x * "_" * y : x
                                                                                                 for x in ["aquifer", "lake", "noise", "plume", "sediment"]
                                                                                                     for y in ["tol", "trg"] ], 6) .* ".tiff"
     types = ["all", "aquifer", "lake", "noise", "plume", "sediment"]
@@ -223,40 +224,7 @@ Pluto.run()
 #=
 
 
-using ArchGDAL
-include(".\\Analysis\\Utils\\Functions.jl")
-const agd = ArchGDAL
 
-# TESTING SUDDIVISIONE DI UNA LINEA IN SEGMENTI E CREAZIONE DI UN NUOVO LAYER  ENUOVE FEATURES
-output = "C:\\Users\\Lenovo\\Desktop\\D\\Risultati Envifate\\Confini\\line\\linea.shp"
-source = "C:\\Users\\Lenovo\\Desktop\\D\\Risultati Envifate\\Base\\src\\source_32.shp"
-dtm = "C:\\Users\\Lenovo\\Desktop\\D\\Risultati Envifate\\Base\\DTM_32.tiff"
-
-d = agd.read(dtm)
-s = agd.getgeom.(collect(agd.getlayer(agd.read(source), 0)))
-point0 = (agd.getx(s[1], 0), agd.gety(s[1], 0))
-#=
-points = [
-    [ point0, point0 .+ (1000, -2500) ],
-    [ point0 .+ (1000, -2500), point0 .+ (-3000, -4500) ],
-    [ point0 .+ (-3000, -4500), point0 .+ (3000, -8000) ],
-    [ point0 .+ (3000, -8000), point0 .+ (-4000, -10000) ]
-]
-=#
-points = [
-    point0,
-    point0 .+ (100, -250),
-    point0 .+ (-300, -450),
-    point0 .+ (300, -800),
-    point0 .+ (-400, -1000)
-]
-
-
-Functions.create_geometry(output, :line, points)
-
-line_geom = agd.getgeom( collect( agd.getlayer( agd.copy(agd.read(output)), 0 ) )[1] )
-# Divide la geometria passata in modo che non ci sia nessun segmento più lungo di 100.0
-agd.segmentize!(line_geom, 100.0)
 
 
 
@@ -362,20 +330,19 @@ using ArchGDAL
 include(".\\Analysis\\Noises.jl")
 const noise = Noises
 src = "C:\\Users\\Lenovo\\Documents\\GitHub\\Tirocinio\\resources\\Analysis data\\source_shapefile\\source_32.shp"
+impd = "C:\\Users\\Lenovo\\Documents\\GitHub\\Tirocinio\\resources\\Analysis data\\impedances.tiff"
 dtm = "C:\\Users\\Lenovo\\Documents\\GitHub\\Tirocinio\\resources\\Analysis data\\DTM_32.tiff"
-out = "D:\\Roba del tirocinio\\Risultati Envifate\\Julia rasters\\test_noise2.tiff"
+out = "C:\\Users\\Lenovo\\Desktop\\D\\Risultati Envifate\\Julia Rasters\\test_noise2.tiff"
 noise.run_noise(
     dem_file = dtm,
+    terrain_impedences_file = impd,
     source_file = src,
     temperature_K = 293.15,
     relative_humidity = 0.2,
     intensity_dB = 110.0,
-    frequency = 400.0,
+    frequency = 1000.0,
     output_path = out
 )
-
-
-
 
 
 

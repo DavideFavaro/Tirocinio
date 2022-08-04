@@ -240,7 +240,6 @@ function run_aquifer( dem_file::String, source_file::String, aquifer_area_file::
     source_thickness <= 0 && throw(DomainError(source_thickness, "`source_thickness` must be grater than 0."))
     darcy_velocity <= 0 && throw(DomainError(darcy_velocity, "`darcy_velocity` must be grater than 0."))
     mixing_zone_depth <= 0 && throw(DomainError(mixing_zone_depth, "`mixing_zone_depth` must be grater than 0."))
-    decay_coeff <= 0 && throw(DomainError(decay_coeff, "`decay_coeff` must be grater than 0."))
     (tolerance < 1 || tolerance > 4) && throw(DomainError(tolerance, "`tolerance` value must be between 1 and 4"))
     algorithm ∉ [:fickian, :domenico] && throw(DomainError(algorithm, "`algorithm` must either be `:fickian` or `:domenico`"))
     option ∉ [:pulse, :continuous] && throw(DomainError(option, "`option` must either be `:continuous` or `:pulse`"))

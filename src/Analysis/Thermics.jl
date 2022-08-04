@@ -259,7 +259,7 @@ function intersection_points( features::Vector{F} ) where {F <: ArchGDAL.Feature
                 # The ramification must be connected to one of the points that form the line that is the main body
                  # so we look for the intersection between "i" and "j"
                 point = find_intersection(feature[i], feature[j], ngi, ngj)
-                !isnothign(point) && point ∉ keys(intersection_points) && push!(intersection_points, point)
+                !isnothign(point) && point ∉ keys(intersection_points) && push!(intersection_points, point => [i, j])
             end
         else # If the feature has more than one geometrty then it will likely be the main flow
             for j in eachindex(features)
@@ -270,12 +270,12 @@ function intersection_points( features::Vector{F} ) where {F <: ArchGDAL.Feature
                 # Check if "j" is attached to "i"
                 point = find_intersection(features[j], features[i], ngj, ngi)
                 found = !isnothign(point)
-                found && point ∉ keys(intersection_points) && push!(intersection_points, point => [i, j, p1])
+                found && point ∉ keys(intersection_points) && push!(intersection_points, point => [i, j])
 
                 # If "j" has more than one geometry and "j" was not a ramification of "i", check if "i" is attached to "j"
                 if ngj != 1 && !found
                     point = find_intersection(features[i], features[j], ngi, ngj)
-                    !isnothign(point) && point ∉ keys(intersection_points) &&  push!(intersection_points, point)
+                    !isnothign(point) && point ∉ keys(intersection_points) &&  push!(intersection_points, point => [i, j])
                 end
             end
         end
@@ -477,6 +477,7 @@ function run_thermic( dem_file::AbstractString, source_file::AbstractString, riv
     source_area = agd.buffer(source, 5.0)
     # Find the portion of the river that intersects said area (there could be no intersection) and
      # update its values of floaw rate and temperature with those of the source
+    
     for feature in features
         segment = agd.getgeom(feature)
         if agd.intersects(source_area, segment)
@@ -497,33 +498,30 @@ function run_thermic( dem_file::AbstractString, source_file::AbstractString, riv
 
        features = point_intersect.getFeatures()
     """
+    # point of intersection => feature 1, feature 2
     intersection_points = intersection_points(features)
-
-
-
-
-
 
     count = 1
     frmain = 0
     dict = Dict()
-    for feature in features
-        geom = agd.getgeom(feature)
-        x = agd.getx(geom, 0)
-        y = agd.gety(geom, 0)
-        r, c = toIndexes(dtm, x, y) 
-        z = demband[r, c]
-
-        res = agd.getfield.( Ref(feature), [:portata_river, :temperatura_river, :portata_river_2, :temperatura_river_2] )
+    for (point, indexes) in intersection_points
+        z = demband[ Functions.toIndexes(dem, point[1:2]...)... ]
+        res = [
+            agd.getfield( features[indexes[1]], :portata ),
+            agd.getfield( features[indexes[1]], :teperatura ),
+            agd.getfield( features[indexes[2]], :portata ),
+            agd.getfield( features[indexes[2]], :teperatura )
+        ]
         if z in keys(dict)
             dict[z] = res
         else
-            push!( dict, z => res )
+            push!(dict, z => res )
         end
     end
 
-    flow_rate = 0.0
-    temperature = 0.0
+    frmain = 0.0
+    flow_rate = flow_rate1 = flow_rate2 = 0.0
+    temperature = temperature1 = teperature2 = 0.0
     for key in keys(dict)
         if count == 1
             if dict[key][1] >= dict[key][3]

@@ -4,6 +4,7 @@ module Noises
 
 
 using ArchGDAL
+using Dates
 using GeoArrays
 using Plots
 using Shapefile
@@ -29,13 +30,11 @@ repeat!( A::AbstractVector, count::Int64 ) = append!( A, repeat(A, count-1) )
 
 
 """
-    transmission_loss( r::Float64 )
+    transmission_loss( dn::Float64, d0::Float64=1.0 )
 
-Compute the transmission loss of a noise over `r` distance.
+Compute the transmission loss of a noise with a certain intensity at ditance `d0` over  distance `dn`.
 """
-function transmission_loss( radius::Float64 )
-    return 20log10(radius)
-end
+transmission_loss( dn::Float64, d0::Float64=1.0  ) = 20log10(dn/d0)
 
 
 """
@@ -46,28 +45,25 @@ Compute the attenuation of a sound at a distance `radius` due to the atmosphere.
 function atmospheric_absorption_loss( radius::Float64, height_m::Float32, relative_humidity::Float64, temperature_k::Float64, frequency::Float64 )
     # Calculate atmospheric absorption coefficient using ANSI S1.26-1995 standard
     # Convert elevation to atmospheric pressure
-    atmospheric_pressure = 101.325( 1 - ( 2.25577 * 10^(-5) * height_m ) )^5.25588
+    atmospheric_pressure = 101.325( 1.0 - ( 2.25577 * 10^(-5.0) * height_m ) )^5.25588
     # Calculate derived values for subsequent equations
     p_atm_pressure = atmospheric_pressure / 101.325
     t_tr = temperature_k / 293.15
     # Convert relative humidity to molar concentration of water vapor
     C = ( -6.8346( 273.16 / temperature_k )^1.261 ) + 4.6151
-    p_saturation_pressure = 10^C
-    humidity = relative_humidity * p_saturation_pressure * p_atm_pressure^(-1)
-    # Calculate relaxation frequency of O (equation 3)
-    #   frO₂ = ( p_atm_pressure * ( (24 + 4.04e04) * humidity ) * (0.02 + humidity) ) / (0.391 + humidity)
-    frO₂ = p_atm_pressure * ( 24 + ( 4.04e04humidity * ( (0.02 + humidity) / (0.391 + humidity) ) ) )
-    # Calculate relaxation frequency of N (equation 4)
-    frN₂ = p_atm_pressure * √t_tr * ( 9 + ( 280humidity * ℯ^( -4.170(t_tr^(-1/3) - 1) ) ) )
-    # Calculate alpha (equation 5)
-    term1 = 1.84 * 10^(-11) * p_atm_pressure^(-1) * √t_tr
-    #   term2 = t_tr^(-2.5) * ( 0.01275 * ℯ^(-2239.1 / temp_k) * ( frO₂ / (frO₂^2 + freq^2) ) )
-    term2 = t_tr^(-2.5)( 0.01275ℯ^(-2239.1 / temperature_k) / ( frO₂ + (frequency^2 / frO₂) ) )
-    #   term3 = 0.1068 * ℯ^(-3352 / temp_k) * ( frN₂ / (frN₂^2 + freq^2) )
-    term3 = t_tr^(-2.5) * ( 0.1068ℯ^(-3352 / temperature_k) / ( frN₂ + (frequency^2 / frN₂) ) ) 
-    #   α = 8.686 * (frequency^2) * ( term1 + term2 + term3 )
-    α = frequency^2 * (term1 + term2 + term3)
-    return (α * radius) / 100
+    p_saturation_pressure = 10.0^C
+    humidity = relative_humidity * p_saturation_pressure * p_atm_pressure^(-1.0)
+    # Calculate relaxation frequency of O
+    frO₂ = p_atm_pressure * ( 24.0 + ( 4.04e04humidity * ( (0.02 + humidity) / (0.391 + humidity) ) ) )
+    # Calculate relaxation frequency of N
+    frN₂ = p_atm_pressure * √( t_tr^-1.0 ) * ( 9.0 + ( 280.0humidity * ℯ^( -4.170(t_tr^(-1/3) - 1.0) ) ) )
+    # Calculate alpha in dB/meters
+    α = 8.686 * frequency^2 * +(
+        1.84 * 10^(-11.0) * p_atm_pressure^(-1.0) * √t_tr,
+        t_tr^(-2.5) * ( 0.01275ℯ^(-2239.1 / temperature_k) / ( frO₂ + (frequency^2 / frO₂) ) ),
+        t_tr^(-2.5) * ( 0.1068ℯ^(-3352 / temperature_k) / ( frN₂ + (frequency^2 / frN₂) ) )
+    )
+    return α * radius
 end
 
 """
@@ -101,7 +97,7 @@ function minmax( profile::AbstractArray{T, 1}, rel_h_src::Float32=0.0f0, rel_h_r
  =# 
     min = ( 1, profile[1][2] )  
     max = ( 1, profile[1][2] )
-    for i in 1:length(profile)
+    for i in eachindex(profile)
         hgt = profile[i][2] - a*profile[i][1] + b
         if hgt > max[2]
             max = (i, hgt)
@@ -374,31 +370,31 @@ end
 
 Run mixed terrain propagation model.
 """
-function varysurf( dists::AbstractArray{T1, 1}, ground_type::AbstractArray{T2, 1}, src_h::Float32, rec_h::Float32, soft_atten::AbstractFloat, hard_atten::AbstractFloat ) where {T1 <: Float64, T2 <:Float32}
+function varysurf( dists::AbstractArray{T1, 1}, ground_type::AbstractArray{T2, 1}, src_h::Float32, rec_h::Float32, soft_atten::AbstractFloat, hard_atten::AbstractFloat ) where {T1 <: Float64, T2 <:Int64}
     drefl = src_h * dists[end] / (src_h + rec_h)
 
-    srcInf = ground_type[1] == Soft ?
-             src_h > 3.0 ?
-                 (20.0 * src_h / 3.0 - 10.0) * src_h :
-                 10.0 * src_h :
-             30.0 * src_h
+    srcInf = ground_type[1] == 0 ?
+        src_h > 3.0 ?
+            (20.0 * src_h / 3.0 - 10.0) * src_h :
+            10.0src_h :
+        30.0src_h
        
-    recInf = ground_type[end] == Soft ?
+    recInf = ground_type[end] == 0 ?
              rec_h > 3.0 ?
                  (20.0 * rec_h / 3.0 - 10.0) * rec_h :
-                 10.0 * rec_h :
-             30.0 * rec_h
+                 10.0rec_h :
+             30.0rec_h
     
     srcInf = min( srcInf, 0.7*drefl )
     recInf = min( recInf, 0.7*(dists[end]-drefl) )
     recInf = dists[end] - recInf
 
     Δl = sum = denom = 0
-    for i in 1:length(dists)
+    for i in eachindex(dists)
         w1 = w2 = 0
         if dists[i] > srcInf && dists[i] < recInf
             w1 = dists[i] < drefl ? rec_h : src_h
-            w2, Δl = ground_type[i] == Hard ? (0.5, hard_atten) : (1.0, soft_atten)
+            w2, Δl = ground_type[i] == 1 ? (0.5, hard_atten) : (1.0, soft_atten)
         end
         sum += w1 * w2 * Δl
         denom += w1 * w2
@@ -726,15 +722,15 @@ function oneCut( distances::AbstractArray{T1, 1}, heights::AbstractArray{T2, 1},
 
  # ====================================================== Section to Process Profile =====================================================================
 
-    for i in 1:length(distances)
+    for i in eachindex(distances)
         push!( profile, (distances[i], heights[i]) )
         push!( flowpr, (distances[i], impdcs[i]) )
         if flowpr[i][2] <= 1000.0
-            push!( ignd, 0 )
+            push!(ignd, 0)
             isoft += 1
             flow_ress[1] += flowpr[i][2]
         else
-            push!( ignd, 1 )
+            push!(ignd, 1)
             ihard += 1
             flow_ress[2] += flowpr[i][2]
         end
@@ -825,12 +821,10 @@ function oneCut( distances::AbstractArray{T1, 1}, heights::AbstractArray{T2, 1},
 
         for j in 1:nfreq
             if ihard > 0
-    # NON MI E' CHIARO IL SENSO DI "duml"
-                atten = egal( d/2, d/2, src_h, rec_h, flow_ress[2], flow_ress[2], 0.0, 0.0, 0.0, freqs[j])[2]
+                attenh = egal( d/2, d/2, src_h, rec_h, flow_ress[2], flow_ress[2], 0.0, 0.0, 0.0, freqs[j])[2]
                 atten = attenh
             end
             if isoft > 0
-    # NON MI E' CHIARO IL SENSO DI "duml"
                 attens = egal( d/2, d/2, src_h, rec_h, flow_ress[1], flow_ress[1], 0.0, 0.0, 0.0, freqs[j])[2]
                 atten = attens
             end
@@ -911,7 +905,6 @@ function oneCut( distances::AbstractArray{T1, 1}, heights::AbstractArray{T2, 1},
         α1 = atan( diff1[2], diff1[1] )
         α2 = atan( diff2[2], diff2[1] )
         α = α2 - α1 + π
-        # d0, d1 = @. √sum( [diff1^2, diff2^2] )
         d0 = @. √( diff1[1]^2 + diff1[2]^2 )
         d1 = @. √( diff2[1]^2 + diff2[2]^2 )
 
@@ -937,7 +930,7 @@ end
 
 
 
-# Based on "https://www.geeksforgeeks.org/dda-line-generation-algorithm-computer-graphics/"
+
 """
     DDA( dtm::GeoArrays.GeoArray{Float32}, impedences::GeoArrays.GeoArray{Float32}, r0::Int64, c0::Int64, rn::Int64, cn::Int64 )
 
@@ -955,10 +948,10 @@ function DDA( dtm::AbstractArray{Float32}, impedences::AbstractArray{Float32}, r
     heigths_profile = Float32[]
     impedences_profile = Float32[]
     coords_profile = Tuple{Float64, Float64}[]
-    for i in 1:steps
+    @inbounds for i in 1:steps
         rint, cint = round.(Int64, [r, c])
         push!( heigths_profile, dtm[rint, cint][1] )
-        push!( impedences_profile, impedences[rint, cint] )
+        push!( impedences_profile, impedences[rint, cint][1] )
         push!( coords_profile, Tuple{Float64, Float64}(ga.coords(dtm, Int64[rint, cint])) )
         r += r_inc
         c += c_inc
@@ -981,20 +974,20 @@ Create and save as `output_path` a raster containing the results of model of dis
 - `relative_humidity::Float64`: relative humidity.
 - `intensity_dB::Float64`: sound intenisty in decibel.
 - `frequency::Float64`: frequency of the sound in hertz.
-"""
+"""#=
 function run_noise(; dem_file::String, terrain_impedences_file::String="", source_file::String, temperature_K::Float64, relative_humidity::Float64,
                      intensity_dB::Float64, frequency::Float64, output_path::String=".\\noise_otput_model.tiff" )
 
     # 192dB is the maximum value possible in decibel for sound pressure level (dB S.P.L.) within Earth's atmosphere.
      # Also, it is worth mentioning that a value of `intensity_dB` greater than 392 would cause a Integer overflow for the computation of `max_radius`.
-      # Integer overflow is achived for Int64 powers of 10, when 10^x > 2^63, so for x > 18, which would result in the computations below for `intensity_dB > 392`.
+      # Integer overflow is achived for Int64 powers of 10, when 10^x > 2^63, so for x > 18, which would result, in the computations below, for `intensity_dB > 392`.
     if intensity_dB < 0 || intensity_dB > 192
         throw(DomainError(intensity_dB, "Sound intensity value outside of valid range."))
     end
     # Input rasters and source point
     noData = -9999.0f0
     dtm = replace( ga.read(dem_file), missing => noData )
-    impedences = isempty(terrain_impedences_file) ? fill( 0.0f0, size(dtm) ) : replace( ga.read(terrain_impedences_file), missing => noData )
+    impedences = replace( ga.read(terrain_impedences_file), missing => noData )
     src = sf.Table(source_file)
     # Source coordinates
     x0 = src.geometry[1].x
@@ -1029,7 +1022,7 @@ function run_noise(; dem_file::String, terrain_impedences_file::String="", sourc
         for α in 0:90:270
             # Arrays of the heigths and the respective coordnates
             heights, impdcs, coords = DDA( dtm, impedences, r0, c0, Functions.rotate_point(point..., r0, c0, α)... )
-            # Array of the distances of each point of the profile from the source
+            # Array of the distances of each point of the profile from the source.
             dists = Float64[ Functions.edistance(x0, y0, coords[1]...) ]
             # Compute the array of the resulting attenuations for each point of a single profile
             for j in 2:length(heights)
@@ -1044,7 +1037,11 @@ function run_noise(; dem_file::String, terrain_impedences_file::String="", sourc
                     # `ground_loss` returns a value smaller than 0 for invisible/unreachable terrain
                     if ground_loss >= 0.0
                         # Resulting sound intensity on the cell
-                        intensity = intensity_dB - transmission_loss(dists[j]) - ground_loss
+                        intensity = intensity_dB - (
+                            transmission_loss(dists[j]) +
+                            atmospheric_absorption_loss(dists[j], heights[j], relative_humidity, temperature_K, frequency) +
+                            ground_loss
+                        )
                         # Intensity values below 32 dB are ignored
                         if intensity >= 32.0
                             nr = r - row_begin + 1
@@ -1062,7 +1059,95 @@ function run_noise(; dem_file::String, terrain_impedences_file::String="", sourc
     # Create the raster in memory.
     Functions.writeRaster(intensity_matrix, agd.getdriver("GTiff"), geotransform, dtm.crs.val, noData, output_path)
 end
+=#
+function run_noise(; dem_file::String, terrain_impedences_file::String="", source_file::String, temperature_K::Float64, relative_humidity::Float64,
+                     intensity_dB::Float64, frequency::Float64, output_path::String=".\\noise_otput_model.tiff" )
 
+    # 192dB is the maximum value possible in decibel for sound pressure level (dB S.P.L.) within Earth's atmosphere.
+     # Also, it is worth mentioning that a value of `intensity_dB` greater than 392 would cause a Integer overflow for the computation of `max_radius`.
+      # Integer overflow is achived for Int64 powers of 10, when 10^x > 2^63, so for x > 18, which would result, in the computations below, for `intensity_dB > 392`.
+    if intensity_dB < 0 || intensity_dB > 192
+        throw(DomainError(intensity_dB, "Sound intensity value outside of valid range."))
+    end
+    # Input rasters and source point
+    noData = -9999.0f0
+    dtm = replace( ga.read(dem_file), missing => noData )
+    impedences = replace( ga.read(terrain_impedences_file), missing => noData )
+    src = sf.Table(source_file)
+    # Source coordinates
+    x0 = src.geometry[1].x
+    y0 = src.geometry[1].y 
+    # Source cell
+    r0, c0 = ga.indices(dtm, [x0, y0])
+    # Source height
+    h0 = dtm[r0, c0][1]
+    # Dimensions of a cell
+    Δx, Δy = ( ga.coords(dtm, size(dtm)[1:2]) .- ga.coords(dtm, [1,1]) ) ./ size(dtm)[1:2]
+    # Maximum radius according to transmission loss.
+    max_radius = ceil(10.0^((intensity_dB - 32.0) / 20.0))
+    # Number of cell fitting the radius of the area of effect of the sound.
+     # For the sake of avoiding "OutOfMemoryError"s we put an hard cap of 2000 to the number of cells of the radius.
+     # Hard cap of 2000 means that all values over 126dB will be limited as area of effect. 
+    cell_num = min( ceil( Int64, max_radius / max(Δx, Δy) ), 2000 )
+    # Limits of the area
+    row_begin = r0 - cell_num
+    row_end = r0 + cell_num
+    col_begin = c0 - cell_num
+    col_end = c0 + cell_num
+    # Vector containing the indexes of the points on first quadrant of the border of the area of interest
+    endpoints = vcat(
+        Tuple{Int64, Int64}[ (row_begin, col) for col in c0+1:col_end ],
+        Tuple{Int64, Int64}[ (row, col_end) for row in row_begin+1:r0 ]
+    )
+    # Matrix with the resulting intenisty levels on the area of interest
+    intensity_matrix = Float32[ noData for i in 1:(row_end - row_begin + 1), j in 1:(col_end - col_begin + 1) ]
+    intensity_matrix[r0 - row_begin, c0 - col_begin] = intensity_dB
+    # Frequency vector for "oneCut"
+    freqs = Float64[frequency]
+    # Compute the values for the remainder of the area
+    start = now()
+    @inbounds for point in endpoints
+        for α in 0:90:270
+            # Arrays of the heigths and the respective coordnates
+            heights, impdcs, coords = DDA( dtm, impedences, r0, c0, Functions.rotate_point(point..., r0, c0, α)... )
+            # Array of the distances of each point of the profile from the source
+            dists = Float64[ Functions.edistance(x0, y0, coords[1]...) ]
+            # Compute the array of the resulting attenuations for each point of a single profile
+            for j in 2:length(heights)
+                # Add to the distance vector as required at the j-th iteration 
+                push!( dists, Functions.edistance(x0, y0, coords[j]...) )
+                # Current cell
+                r, c = ga.indices(dtm, [coords[j]...])
+                # If the cell should have a value
+                if dtm[r, c] != noData
+                    # Attenuation due to terrain
+                    gl = oneCut( view(dists, 1:j), view(heights, 1:j), view(impdcs, 1:j), h0, heights[j], 1, freqs )[end]
+                    # Resulting sound intensity on the cell
+                    intensity = intensity_dB - +(
+                        max( transmission_loss(dists[j]), 0 ),
+                        max( atmospheric_absorption_loss(dists[j], heights[j], relative_humidity, temperature_K, frequency), 0 ),
+                        gl < 0.0 || isnan(gl) ? 0.0 : gl
+                    )
+                    if intensity >= 0
+                        nr = r - row_begin
+                        nc = c - col_begin
+                        intensity_matrix[nr, nc] = max(intensity_matrix[nr, nc], Float32(intensity))
+                    end
+                end
+            end
+        end
+    end
+    # Define the geotranformation for the raster.
+    geotransform = agd.getgeotransform(dtm)
+    geotransform[[1, 4]] .= Functions.toCoords(geotransform, row_begin, col_begin)
+    # Create the raster in memory.
+    Functions.writeRaster(intensity_matrix, agd.getdriver("GTiff"), geotransform, dtm.crs.val, noData, output_path)
+    println(now() - start)
+end
+
+
+
+   
 
 
 end # module

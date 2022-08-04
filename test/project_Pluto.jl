@@ -97,25 +97,6 @@ begin
 	contourf(solution, clabels=true)
 end
 
-# ╔═╡ f11fd4a4-6fad-4eaa-8a05-e7b38d5071a2
-#=
-for param in unique(resmt.parameter)
-    measurements = resmt[ resmt.parameter .== param ]
-    values = ( val = measurements.value, )
-    coords = Tuple{Float64, Float64}[ (c[1], c[2]) for c in eachrow(measurements[:, [:longitude, :latitude]]) ]
-    
-    solution = solve(
-        EstimationProblem(
-            georef(values, coords),
-            CartesianGrid(100, 100),
-            :val
-        ),
-        Kriging(:val => ( variogram = GaussianVariogram(range=35.0), ))
-    )
-    contourf(solution, clabels=true)
-end
-=#
-
 # ╔═╡ d2ca35b9-1912-4329-8ddd-2020b5852ae9
 # Data Analysis testing
 
@@ -127,6 +108,13 @@ end
 begin
 	dtm_file = "..\\resources\\Analysis data\\DTM_32.tiff"
 	dtm = agd.readraster(dtm_file)
+end
+
+# ╔═╡ 5adf8759-5fbf-4aa1-8e36-b5a05d3b0438
+# Test impedence raster, contains data on the acoustic impedence of terrain
+begin
+	impedence_file = "..\\resources\\Analysis data\\impedances.tiff"
+	impd = agd.read(impedence_file)
 end
 
 # ╔═╡ b7699c02-99a1-4010-afc8-816da12e2c25
@@ -189,21 +177,6 @@ Aquifers.run_aquifer(
     output_path = "..\\resources\\Analysis results\\test_aquifer.tiff"
 )
 
-# ╔═╡ 7e893ee0-2c61-4d00-a6c4-5f2a5893f927
-# Remove the source point value
-rast = ga.read("..\\resources\\Analysis results\\test_aquifer.tiff")
-replace!( rast, maximum(skipmissing(rast.A)) => missing )
-#Plot the results of the analysis
-heatmap(
-    rast,
-    plot_title = "Aquifer pollution diffusion",
-    xlabel = "X coordinate (m)",
-    ylabel = "Y coordinate (m)",
-    color = :cividis
-)
-#Add the source
-plot!(src_geom)
-
 # ╔═╡ d8f5f781-6d0d-48e5-b7be-63c6c41fe94a
 # Polutants dispersion in lakes
 
@@ -222,21 +195,6 @@ Lakes.run_lake(
     output_path = "..\\resources\\Analysis results\\test_lake.tiff"
 )
 
-# ╔═╡ 477bf721-55d8-4a10-bc60-dbb711430888
-# Remove the source point value
-rast = ga.read("..\\resources\\Analysis results\\test_lake.tiff")
-replace!( rast, maximum(skipmissing(rast.A)) => missing )
-#Plot the results of the analysis
-heatmap(
-    rast,
-    plot_title = "Lake pollution diffusion",
-    xlabel = "X coordinate (m)",
-    ylabel = "Y coordinate (m)",
-    color = :inferno
-)
-#Add the source
-plot!(src_geom)
-
 # ╔═╡ 537c45ac-88c6-4a4b-96ec-a5021f69ee5a
 # Noise pollution
 
@@ -244,28 +202,13 @@ plot!(src_geom)
 Noises.run_noise(
     dem_file = dtm_file,
     source_file = source_file,
+	terrain_impedences_file = impedence_file,
     temperature_K = 293.15,
     relative_humidity = 0.2,
     intensity_dB = 110.0,
     frequency = 400.0,
     output_path = "..\\resources\\Analysis results\\test_noise.tiff"
 )
-
-# ╔═╡ d1ff9732-d7ec-421f-a3c7-fb156c6f7cc7
-# Remove the source point value
-rast = ga.read("..\\resources\\Analysis results\\test_noise.tiff")
-replace!( rast, maximum(skipmissing(rast.A)) => missing )
-#Plot the results of the analysis
-heatmap(
-    rast,
-    plot_title = "Noise pollution",
-    xlabel = "X coordinate (m)",
-    ylabel = "Y coordinate (m)",
-    colorbar_title = "Noise level (dB S.P.L.)",
-    color = :winter
-)
-#Add the source
-plot!(src_geom)
 
 # ╔═╡ 83a9cd5e-041c-4997-ae8d-d1027f297b96
 # Airborne pollutants dispersion from a stack
@@ -288,22 +231,6 @@ Plumes.run_plume(
     output_path = "..\\resources\\Analysis results\\test_plumes.tiff"
 )
 
-# ╔═╡ 05e494b8-d3af-49a7-b449-98326f158bc3
-# Remove the source point value
-rast = ga.read("..\\resources\\Analysis results\\test_plume.tiff")
-replace!( rast, maximum(skipmissing(rast.A)) => missing )
-#Plot the results of the analysis
-heatmap(
-    rast,
-    plot_title = "Plume pollution diffusion",
-    xlabel = "X coordinate (m)",
-    ylabel = "Y coordinate (m)",
-    colorbar_title = "Substance concentration",
-    color = :seaborn_rocket_gradient
-)
-#Add the source
-plot!(src_geom)
-
 # ╔═╡ 3173f593-c0af-4a14-86a6-93d91109edca
 # Pollutants sedimentation
 
@@ -324,20 +251,92 @@ Sediments.run_sediment(
     output_path = "..\\resources\\Analysis results\\test_sediments.tiff"
 )
 
-# ╔═╡ a825b3a7-5c12-4d98-b1cd-d87d0548ac6b
+# ╔═╡ 05e494b8-d3af-49a7-b449-98326f158bc3
+begin
 # Remove the source point value
-rast = ga.read("..\\resources\\Analysis results\\test_sediment.tiff")
-replace!( rast, maximum(skipmissing(rast.A)) => missing )
+	rast = ga.read("..\\resources\\Analysis results\\test_plume.tiff")
+	replace!( rast, maximum(skipmissing(rast.A)) => missing )
 #Plot the results of the analysis
-heatmap(
-    rast,
-    plot_title = "Sediment pollution diffusion",
-    xlabel = "X coordinate (m)",
-    ylabel = "Y coordinate (m)",
-    color = :viridis
-)
+	heatmap(
+ 		rast,
+   		plot_title = "Plume pollution diffusion",
+    	xlabel = "X coordinate (m)",
+    	ylabel = "Y coordinate (m)",
+    	colorbar_title = "Substance concentration",
+    	color = :seaborn_rocket_gradient
+	)
 #Add the source
-plot!(src_geom)
+	plot!(src_geom)
+end
+
+# ╔═╡ 7e893ee0-2c61-4d00-a6c4-5f2a5893f927
+begin
+# Remove the source point value
+	rast = ga.read("..\\resources\\Analysis results\\test_aquifer.tiff")
+	replace!( rast, maximum(skipmissing(rast.A)) => missing )
+#Plot the results of the analysis
+	heatmap(
+    	rast,
+    	plot_title = "Aquifer pollution diffusion",
+    	xlabel = "X coordinate (m)",
+    	ylabel = "Y coordinate (m)",
+    	color = :cividis
+	)
+#Add the source
+	plot!(src_geom)
+end
+
+# ╔═╡ a825b3a7-5c12-4d98-b1cd-d87d0548ac6b
+begin
+# Remove the source point value
+	rast = ga.read("..\\resources\\Analysis results\\test_sediment.tiff")
+	replace!( rast, maximum(skipmissing(rast.A)) => missing )
+#Plot the results of the analysis
+	heatmap(
+    	rast,
+    	plot_title = "Sediment pollution diffusion",
+    	xlabel = "X coordinate (m)",
+    	ylabel = "Y coordinate (m)",
+    	color = :viridis
+	)
+#Add the source
+	plot!(src_geom)
+end
+
+# ╔═╡ 477bf721-55d8-4a10-bc60-dbb711430888
+begin
+# Remove the source point value
+	rast = ga.read("..\\resources\\Analysis results\\test_lake.tiff")
+	replace!( rast, maximum(skipmissing(rast.A)) => missing )
+#Plot the results of the analysis
+	heatmap(
+    	rast,
+    	plot_title = "Lake pollution diffusion",
+    	xlabel = "X coordinate (m)",
+    	ylabel = "Y coordinate (m)",
+    	color = :inferno
+	)
+#Add the source
+	plot!(src_geom)
+end
+
+# ╔═╡ d1ff9732-d7ec-421f-a3c7-fb156c6f7cc7
+begin
+# Remove the source point value
+	rast = ga.read("..\\resources\\Analysis results\\test_noise.tiff")
+	replace!( rast, maximum(skipmissing(rast.A)) => missing )
+#Plot the results of the analysis
+	heatmap(
+ 		rast,
+  		plot_title = "Noise pollution",
+  		xlabel = "X coordinate (m)",
+  		ylabel = "Y coordinate (m)",
+  		colorbar_title = "Noise level (dB S.P.L.)",
+   		color = :winter
+	)
+#Add the source
+	plot!(src_geom)
+end
 
 # ╔═╡ Cell order:
 # ╠═1769fb6b-c6a6-4ab4-91eb-8a1f245b7d21
@@ -351,10 +350,10 @@ plot!(src_geom)
 # ╠═81190d46-872b-490f-95b7-17fcd02dd2e1
 # ╠═0447a923-fcc3-4425-b17d-6a5bd4c38d83
 # ╠═28ddd2f5-f53b-46c0-993c-d05b10fca309
-# ╠═f11fd4a4-6fad-4eaa-8a05-e7b38d5071a2
 # ╠═d2ca35b9-1912-4329-8ddd-2020b5852ae9
 # ╠═9e8d41ce-4582-44ff-890c-7d89cdce9984
 # ╠═4450aaa2-f049-44df-9bd7-43c13fdaaa3e
+# ╠═5adf8759-5fbf-4aa1-8e36-b5a05d3b0438
 # ╠═b7699c02-99a1-4010-afc8-816da12e2c25
 # ╠═c6900570-217a-4936-b140-962c33038925
 # ╠═e960080e-05a5-480a-b27f-4149153300e4

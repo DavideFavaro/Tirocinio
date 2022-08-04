@@ -3,7 +3,6 @@ module GeoTrees
 
 
 
-using Revise
 using ArchGDAL
 using SpatialIndexing
 using JLD2
