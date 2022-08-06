@@ -160,6 +160,7 @@ src_geom = agd.getgeom(collect(agd.getlayer(source, 0))[1])
 
 # ╔═╡ 75eaae0c-55e9-4de5-9d31-f405f60f5863
 Aquifers.run_aquifer(
+    "..\\resources\\Analysis results\\test_aquifer.tiff",
     dtm_file,
     source_file,
     area_file,
@@ -173,8 +174,7 @@ Aquifers.run_aquifer(
     time = 10,
     orthogonal_width = 10.0,
     mixing_zone_depth = 1580.0,
-    algorithm = :domenico,
-    output_path = "..\\resources\\Analysis results\\test_aquifer.tiff"
+    algorithm = :domenico
 )
 
 # ╔═╡ d8f5f781-6d0d-48e5-b7be-63c6c41fe94a
@@ -182,6 +182,7 @@ Aquifers.run_aquifer(
 
 # ╔═╡ f62e94e9-9c0c-4ed7-b87d-c0d958257d59
 Lakes.run_lake(
+    "..\\resources\\Analysis results\\test_lake.tiff",
     dtm_file,
     source_file,
     area_file,
@@ -191,8 +192,7 @@ Lakes.run_lake(
     10.0,
     tolerance = 2,
     fickian_x = 4.0,
-    fickian_y = 3.0,
-    output_path = "..\\resources\\Analysis results\\test_lake.tiff"
+    fickian_y = 3.0
 )
 
 # ╔═╡ 537c45ac-88c6-4a4b-96ec-a5021f69ee5a
@@ -200,14 +200,14 @@ Lakes.run_lake(
 
 # ╔═╡ 725222e8-960b-4618-8b3c-aa493caf7c16
 Noises.run_noise(
-    dem_file = dtm_file,
-    source_file = source_file,
-	terrain_impedences_file = impedence_file,
-    temperature_K = 293.15,
-    relative_humidity = 0.2,
-    intensity_dB = 110.0,
-    frequency = 400.0,
-    output_path = "..\\resources\\Analysis results\\test_noise.tiff"
+    "..\\resources\\Analysis results\\test_noise.tiff",
+    dtm_file,
+    impedence_file,
+    source_file,
+    293.15,
+    0.2,
+    110.0,
+    400.0,
 )
 
 # ╔═╡ 83a9cd5e-041c-4997-ae8d-d1027f297b96
@@ -215,6 +215,7 @@ Noises.run_noise(
 
 # ╔═╡ 7c9a6143-5331-42dd-9541-052d411bc284
 Plumes.run_plume(
+    "..\\resources\\Analysis results\\test_plume.tiff",
     dtm_file,
     source_file,
     "a",
@@ -227,8 +228,7 @@ Plumes.run_plume(
     tolerance = 2,
     gas_velocity = 0.1,
     gas_temperature = 150.0,
-    temperature = 18.0,
-    output_path = "..\\resources\\Analysis results\\test_plumes.tiff"
+    temperature = 18.0
 )
 
 # ╔═╡ 3173f593-c0af-4a14-86a6-93d91109edca
@@ -236,6 +236,7 @@ Plumes.run_plume(
 
 # ╔═╡ 928d1a74-86a8-488c-92fd-b660794db328
 Sediments.run_sediment(
+    "..\\resources\\Analysis results\\test_sediment.tiff",
     dtm_file,
     source_file,
     0.03,
@@ -247,8 +248,7 @@ Sediments.run_sediment(
     0.0359,
     100,
     1,
-    tolerance = 2,
-    output_path = "..\\resources\\Analysis results\\test_sediments.tiff"
+    tolerance = 2
 )
 
 # ╔═╡ 05e494b8-d3af-49a7-b449-98326f158bc3

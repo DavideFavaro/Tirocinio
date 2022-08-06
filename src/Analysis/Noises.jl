@@ -974,101 +974,19 @@ Create and save as `output_path` a raster containing the results of model of dis
 - `relative_humidity::Float64`: relative humidity.
 - `intensity_dB::Float64`: sound intenisty in decibel.
 - `frequency::Float64`: frequency of the sound in hertz.
-"""#=
-function run_noise(; dem_file::String, terrain_impedences_file::String="", source_file::String, temperature_K::Float64, relative_humidity::Float64,
-                     intensity_dB::Float64, frequency::Float64, output_path::String=".\\noise_otput_model.tiff" )
+"""
+function run_noise(  output_path::String, dem_file::String, terrain_impedences_file::String="", source_file::String, temperature_K::Float64, relative_humidity::Float64,
+                     intensity_dB::Float64, frequency::Float64 )
+
+    error_msgs = ( "must be positive.", "must be greater than 0." )
 
     # 192dB is the maximum value possible in decibel for sound pressure level (dB S.P.L.) within Earth's atmosphere.
      # Also, it is worth mentioning that a value of `intensity_dB` greater than 392 would cause a Integer overflow for the computation of `max_radius`.
       # Integer overflow is achived for Int64 powers of 10, when 10^x > 2^63, so for x > 18, which would result, in the computations below, for `intensity_dB > 392`.
-    if intensity_dB < 0 || intensity_dB > 192
-        throw(DomainError(intensity_dB, "Sound intensity value outside of valid range."))
-    end
-    # Input rasters and source point
-    noData = -9999.0f0
-    dtm = replace( ga.read(dem_file), missing => noData )
-    impedences = replace( ga.read(terrain_impedences_file), missing => noData )
-    src = sf.Table(source_file)
-    # Source coordinates
-    x0 = src.geometry[1].x
-    y0 = src.geometry[1].y 
-    # Source cell
-    r0, c0 = ga.indices(dtm, [x0, y0])
-    # Source height
-    h0 = dtm[r0, c0][1]
-    # Dimensions of a cell
-    Δx, Δy = ( ga.coords(dtm, size(dtm)[1:2]) .- ga.coords(dtm, [1,1]) ) ./ size(dtm)[1:2]
-    # Maximum radius according to transmission loss.
-    max_radius = ceil(10.0^((intensity_dB - 32.0) / 20.0))
-    # Number of cell fitting the radius of the area of effect of the sound.
-     # For the sake of avoiding "OutOfMemoryError"s we put an hard cap of 2000 to the number of cells of the radius.
-     # Hard cap of 2000 means that all values over 126dB will be limited as area of effect. 
-    cell_num = min( ceil( Int64, max_radius / max(Δx, Δy) ), 2000 )
-    # Limits of the area
-    row_begin = r0 - cell_num
-    row_end = r0 + cell_num
-    col_begin = c0 - cell_num
-    col_end = c0 + cell_num
-    # Vector containing the indexes of the points on first quadrant of the border of the area of interest
-    endpoints = vcat(
-        Tuple{Int64, Int64}[ (row_begin, col) for col in c0+1:col_end ],
-        Tuple{Int64, Int64}[ (row, col_end) for row in row_begin+1:r0 ]
-    )
-    # Matrix with the resulting intenisty levels on the area of interest
-    intensity_matrix = Float32[ noData for i in 1:(row_end - row_begin + 1), j in 1:(col_end - col_begin + 1) ]
-    intensity_matrix[r0 - row_begin + 1, c0 - col_begin + 1] = intensity_dB
-    # Compute the values for the remainder of the area
-    @inbounds for point in endpoints
-        for α in 0:90:270
-            # Arrays of the heigths and the respective coordnates
-            heights, impdcs, coords = DDA( dtm, impedences, r0, c0, Functions.rotate_point(point..., r0, c0, α)... )
-            # Array of the distances of each point of the profile from the source.
-            dists = Float64[ Functions.edistance(x0, y0, coords[1]...) ]
-            # Compute the array of the resulting attenuations for each point of a single profile
-            for j in 2:length(heights)
-                # Add to the distance vector as required at the j-th iteration 
-                push!( dists, Functions.edistance(x0, y0, coords[j]...) )
-                # Current cell
-                r, c = ga.indices(dtm, [coords[j]...])
-                # If the cell should have a value
-                if dtm[r, c] != noData
-                    # Attenuation due to terrain
-                    ground_loss = oneCut( view(dists, 1:j), view(heights, 1:j), view(impdcs, 1:j), h0, heights[j], 1, Float64[frequency] )[end]
-                    # `ground_loss` returns a value smaller than 0 for invisible/unreachable terrain
-                    if ground_loss >= 0.0
-                        # Resulting sound intensity on the cell
-                        intensity = intensity_dB - (
-                            transmission_loss(dists[j]) +
-                            atmospheric_absorption_loss(dists[j], heights[j], relative_humidity, temperature_K, frequency) +
-                            ground_loss
-                        )
-                        # Intensity values below 32 dB are ignored
-                        if intensity >= 32.0
-                            nr = r - row_begin + 1
-                            nc = c - col_begin + 1
-                            intensity_matrix[nr, nc] = max(intensity_matrix[nr, nc], Float32(intensity))
-                        end
-                    end
-                end
-            end
-        end
-    end
-    # Define the geotranformation for the raster.
-    geotransform = agd.getgeotransform(dtm)
-    geotransform[[1, 4]] .= Functions.toCoords(geotransform, row_begin, col_begin)
-    # Create the raster in memory.
-    Functions.writeRaster(intensity_matrix, agd.getdriver("GTiff"), geotransform, dtm.crs.val, noData, output_path)
-end
-=#
-function run_noise(; dem_file::String, terrain_impedences_file::String="", source_file::String, temperature_K::Float64, relative_humidity::Float64,
-                     intensity_dB::Float64, frequency::Float64, output_path::String=".\\noise_otput_model.tiff" )
+    ( intensity_dB <= 0 || intensity_dB => 192 ) && throw(DomainError(intensity_dB, "Sound intensity value outside of valid range."))
+    relative_humidity <= 0 && throw(DomainError(relative_humidity, "`relative_humidity` "*error_msgs[1]))
+    frequency <= 0 && throw(DomainError(frequency, "`frequency` "*error_msgs[2]))
 
-    # 192dB is the maximum value possible in decibel for sound pressure level (dB S.P.L.) within Earth's atmosphere.
-     # Also, it is worth mentioning that a value of `intensity_dB` greater than 392 would cause a Integer overflow for the computation of `max_radius`.
-      # Integer overflow is achived for Int64 powers of 10, when 10^x > 2^63, so for x > 18, which would result, in the computations below, for `intensity_dB > 392`.
-    if intensity_dB < 0 || intensity_dB > 192
-        throw(DomainError(intensity_dB, "Sound intensity value outside of valid range."))
-    end
     # Input rasters and source point
     noData = -9999.0f0
     dtm = replace( ga.read(dem_file), missing => noData )
@@ -1131,7 +1049,7 @@ function run_noise(; dem_file::String, terrain_impedences_file::String="", sourc
                     if intensity >= 0
                         nr = r - row_begin
                         nc = c - col_begin
-                        intensity_matrix[nr, nc] = max(intensity_matrix[nr, nc], Float32(intensity))
+                        intensity_matrix[nr, nc] = Float32(intensity)
                     end
                 end
             end
@@ -1145,9 +1063,6 @@ function run_noise(; dem_file::String, terrain_impedences_file::String="", sourc
     println(now() - start)
 end
 
-
-
-   
 
 
 end # module

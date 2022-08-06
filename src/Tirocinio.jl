@@ -27,6 +27,7 @@ const agd = ArchGDAL
     96-18-4      1,2,3-Tricloropropano    liquido("l")      0.004            8.571e-5             0.0003
 =#
 function main()
+
     path = pwd()
     src = path*"\\resources\\Analysis data\\source_shapefile\\source_32.shp"
     dtm = path*"\\resources\\Analysis data\\DTM_32.tiff"
@@ -67,27 +68,25 @@ function main()
         if type == "f"
             println("\tAnalisi libera")
             Aquifers.run_aquifer(
-                dtm, src, area,
+                out[1], dtm, src, area,
                 "108-88-3", 100.0,
             	1000.0, 0, 20.0, "sand",
                 tolerance = 2,
             	time = 10,
             	orthogonal_width = 10.0,
             	mixing_zone_depth = 1580.0,
-            	algorithm = :domenico,
-            	output_path = out[1]
+            	algorithm = :domenico
             )
         else
             println("\tAnalisi localizzata")
             Aquifers.run_aquifer(
-                dtm, src, area, trg,
+                out[2], dtm, src, area, trg,
                 "108-88-3", 100.0,
             	1000.0, 0, 20.0, "sand",
             	time = 10,
             	orthogonal_width = 10.0,
             	mixing_zone_depth = 1580.0,
-            	algorithm = :domenico,
-            	output_path = out[2]
+            	algorithm = :domenico
             )
         end
     end
@@ -105,34 +104,27 @@ function main()
         if type == "f"
             println("\tAnalisi libera")
             Lakes.run_lake(
-                dtm, src, area,
+                out[3], dtm, src, area,
                 2000.0, 0, 0.03, 10.0,
                 tolerance = 2,
                 fickian_x = 4.0,
-                fickian_y = 3.0,
-                output_path = out[3]
+                fickian_y = 3.0
             )
         else
             println("\tAnalisi localizzata")
             Lakes.run_lake(
-                dtm, src, area, trg,
+                out[4], dtm, src, area, trg,
                 2000.0, 0, 0.03, 10.0,
                 fickian_x = 4.0,
-                fickian_y = 3.0,
-                output_path = out[4]
+                fickian_y = 3.0
             )
         end
     end
     if type == types[1] || type == types[4]
         println("Esecuzione analisi rumore.")
         Noises.run_noise(
-            dem_file = dtm,
-            source_file = src,
-            temperature_K = 293.15,
-            relative_humidity = 0.2,
-            intensity_dB = 110.0,
-            frequency = 400.0,
-            output_path = out[5]
+            out[5], dtm, src,
+            293.15, 0.2, 110.0, 400.0
         )
     end
     if type == types[1] || type == types[5]
@@ -152,22 +144,20 @@ function main()
         if type == "f"
             println("\tAnalisi libera.\n")
             Plumes.run_plume(
-                dtm, src,
+                out[6], dtm, src,
                 "a", "c", 10000.0, 0, 0.1, 80.0, 1.0,
                 tolerance = 2,
                 gas_velocity = 0.1,
                 gas_temperature = 150.0,
-                temperature = 18.0,
-                output_path = out[6]
+                temperature = 18.0
             )
         else
             Plumes.run_plume(
-                dtm, src, trg,
+                out[7], dtm, src, trg,
                 "a", "c", 10000.0, 0, 0.1, 80.0, 1.0,
                 gas_velocity = 0.1,
                 gas_temperature = 150.0,
-                temperature = 18.0,
-                output_path = out[7]
+                temperature = 18.0
             )
         end
     end
@@ -176,16 +166,14 @@ function main()
         if type == "f"
             println("\tAnalisi libera.\n")
             Sediments.run_sediment(
-            	dtm, src,
+            	out[8], dtm, src,
             	0.03, 13.0, 1.0, 10.0, 4.0, 0, 0.0359, 1000, 10,
-                tolerance = 2,
-            	output_path = out[8]
+                tolerance = 2
             )
         else
             Sediments.run_sediment(
-            	dtm, src, trg,
-            	0.03, 13.0, 1.0, 10.0, 4.0, 0, 0.0359, 1000, 10,
-            	output_path = out[9]
+            	out[9], dtm, src, trg,
+            	0.03, 13.0, 1.0, 10.0, 4.0, 0, 0.0359, 1000, 10
             )
         end
     end
@@ -332,7 +320,7 @@ const noise = Noises
 src = "C:\\Users\\Lenovo\\Documents\\GitHub\\Tirocinio\\resources\\Analysis data\\source_shapefile\\source_32.shp"
 impd = "C:\\Users\\Lenovo\\Documents\\GitHub\\Tirocinio\\resources\\Analysis data\\impedances.tiff"
 dtm = "C:\\Users\\Lenovo\\Documents\\GitHub\\Tirocinio\\resources\\Analysis data\\DTM_32.tiff"
-out = "C:\\Users\\Lenovo\\Desktop\\D\\Risultati Envifate\\Julia Rasters\\test_noise2.tiff"
+out = "C:\\Users\\Lenovo\\Desktop\\D\\Risultati Envifate\\Julia Rasters\\test_noise_9.tiff"
 noise.run_noise(
     dem_file = dtm,
     terrain_impedences_file = impd,

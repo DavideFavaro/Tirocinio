@@ -217,7 +217,7 @@ Run the simulation of leaching and dispersion of contaminants in an aquifer, ret
 - `time::Int64=1`: starting time.
 - `orthogonal_width::Float64=10000.0`
 - `soil_density::Float64=1.70`: density of the terrain.
-- `source_thickness::Float64::Float64=1.0`: thickness of the terrain layer at the source.
+- `source_thickness::Float64=1.0`: thickness of the terrain layer at the source.
 - `darcy_velocity::Float64=0.000025`
 - `mixing_zone_depth::Float64=1.0`
 - `decay_coeff::Float64=0.0`
@@ -226,57 +226,60 @@ Run the simulation of leaching and dispersion of contaminants in an aquifer, ret
 - `output_path::String=".\\aquifer_output_model.tiff": output file path.
 
 """
-function run_aquifer( dem_file::String, source_file::String, aquifer_area_file::String, contaminantCASNum::String, concentration::Float64, aquifer_depth::Float64,
-                      aquifer_flow_direction::Int64, mean_rainfall::Float64, texture::String; tolerance::Int64=2, time::Int64=1, orthogonal_width::Float64=10000.0,
-                      soil_density::Float64=1.70, source_thickness::Float64=1.0, darcy_velocity::Float64=0.000025, mixing_zone_depth::Float64=1.0, decay_coeff::Float64=0.0,
-                      algorithm::Symbol=:fickian, option::Symbol=:continuous, output_path::String=".\\aquifer_output_model.tiff" )
+function run_aquifer( output_path::String, dem_file::String, source_file::String, aquifer_area_file::String, contaminantCASNum::String, concentration::Float64,
+                      aquifer_depth::Float64, aquifer_flow_direction::Int64, mean_rainfall::Float64, texture::String; tolerance::Int64=2, time::Int64=1,
+                      orthogonal_width::Float64=10000.0, soil_density::Float64=1.70, source_thickness::Float64=1.0, darcy_velocity::Float64=0.000025, mixing_zone_depth::Float64=1.0,
+                      decay_coeff::Float64=0.0, algorithm::Symbol=:fickian, option::Symbol=:continuous )
 
-    concentration <= 0 && throw(DomainError(concentration, "`concentration` must be grater than 0."))
-    aquifer_depth <= 0 && throw(DomainError(aquifer_depth, "`aquifer_depth` must be grater than 0."))
-    mean_rainfall < 0 && throw(DomainError(mean_rainfall, "`mean_rainfall` must be positive."))
-    time < 0 && throw(DomainError(time, "`time` must be positive."))
-    orthogonal_width <= 0 && throw(DomainError(orthogonal_width, "`orthogonal_width` must be grater than 0."))
-    soil_density <= 0 && throw(DomainError(soil_density, "`soil_density` must be grater than 0."))
-    source_thickness <= 0 && throw(DomainError(source_thickness, "`source_thickness` must be grater than 0."))
-    darcy_velocity <= 0 && throw(DomainError(darcy_velocity, "`darcy_velocity` must be grater than 0."))
-    mixing_zone_depth <= 0 && throw(DomainError(mixing_zone_depth, "`mixing_zone_depth` must be grater than 0."))
-    (tolerance < 1 || tolerance > 4) && throw(DomainError(tolerance, "`tolerance` value must be between 1 and 4"))
-    algorithm ∉ [:fickian, :domenico] && throw(DomainError(algorithm, "`algorithm` must either be `:fickian` or `:domenico`"))
-    option ∉ [:pulse, :continuous] && throw(DomainError(option, "`option` must either be `:continuous` or `:pulse`"))
-    # Read values concerning the substance that will be used in the analysis, from the database.
+    error_msgs = ( "must be positive.", "must be greater than 0." )
+    concentration <= 0 && throw(DomainError(concentration, "`concentration` "*error_msgs[2]))
+    aquifer_depth <= 0 && throw(DomainError(aquifer_depth, "`aquifer_depth` "*error_msgs[2]))
+    mean_rainfall < 0 && throw(DomainError(mean_rainfall, "`mean_rainfall` "*error_msgs[1]))
+    (tolerance < 1 || tolerance > 4) && throw(DomainError(tolerance, "`tolerance` value must be between 1 and 4."))
+    time < 0 && throw(DomainError(time, "`time` "*error_msgs[1]))
+    orthogonal_width <= 0 && throw(DomainError(orthogonal_width, "`orthogonal_width` "*error_msgs[2]))
+    soil_density <= 0 && throw(DomainError(soil_density, "`soil_density` "*error_msgs[2]))
+    source_thickness <= 0 && throw(DomainError(source_thickness, "`source_thickness` "*error_msgs[2]))
+    darcy_velocity <= 0 && throw(DomainError(darcy_velocity, "`darcy_velocity` "*error_msgs[2]))
+    mixing_zone_depth <= 0 && throw(DomainError(mixing_zone_depth, "`mixing_zone_depth` "*error_msgs[2]))
+    decay_coeff < 0 && throw(DomainError(decay_coeff, "`decay_coeff` "*error_msgs[2]))
+    algorithm != :fickian && algorithm != :domenico && throw(DomainError(algorithm, "`algorithm` must either be `:fickian` or `:domenico`."))
+    option != :pulse && option != :continuous && throw(DomainError(option, "`option` must either be `:continuous` or `:pulse`."))
+
+    # Read values concerning the substance that will be used in the analysis, from the database
     henry_const, soil_adsorption = FunctionsDB.substance_extract(contaminantCASNum, ["c_henry", "koc_kd"])[1, :]
-    # Check for actual results.
-    isempty(henry_const) && isempty(soil_adsorption) && throw(DomainError(contaminantCASNum, "Analysis error, check input parameters"))
-    # Read values concerning the texture of the terrain that will be used in the analysis, from the database.
+    # Check for actual results
+    isempty(henry_const) && isempty(soil_adsorption) && throw(DomainError(contaminantCASNum, "Analysis error, check input parameters."))
+    # Read values concerning the texture of the terrain that will be used in the analysis, from the database
     volumetric_air_content, volumetric_water_content, effective_infiltration, tera_e, grain = FunctionsDB.texture_extract(texture, ["tot_por", "c_water_avg", "ief", "por_eff", "grain"])[1, :]
-    # Check for actual results.
+    # Check for actual results
     any( isempty, [volumetric_air_content, volumetric_water_content, effective_infiltration, tera_e, grain] ) && throw(DomainError(texture, "Analysis error, check input parameters"))
 
     src_geom, aqf_geom, dem = Functions.check_and_return_spatial_data(source_file, aquifer_area_file, dem_file)
 
     effective_infiltration *= (mean_rainfall / 10.0)^2.0
-    # Find the location of the source in the raster (as raster indexes).
+    # Find the location of the source in the raster (as raster indexes)
     x_source = agd.getx(src_geom, 0)
     y_source = agd.gety(src_geom, 0)
     r_source, c_source = Functions.toIndexes(dem, x_source, y_source)
-    # Create an instance of the first object used to aid in the analysis process.
-    # Its main use is to gather values and the physical computations in one place.
+    # Create an instance of the first object used to aid in the analysis process
+    # Its main use is to gather values and the physical computations in one place
     element = Leach( henry_const, volumetric_water_content, volumetric_air_content, soil_adsorption, effective_infiltration, soil_density, source_thickness, aquifer_depth,
                      darcy_velocity, mixing_zone_depth, orthogonal_width )
     calc_kw!(element)
     calc_ldf!(element)
     calc_sam!(element)
     secondary_source_concentration = concentration * calc_LF!(element)
-    # Object that will be effectively used during the analysis and passed as a parameter.
-     # The expression that computes the angle fo flow ( "(360 + 180 - aquifer_flow_direction) % 360" ) is there to translate a cartesian angle in one valid for a raster.
-      # In a raster each angle will be mirrored along the Y axis thus the expression above is used to counterbalance this shift. 
+    # Object that will be effectively used during the analysis and passed as a parameter
+     # The expression that computes the angle fo flow ( "(360 + 180 - aquifer_flow_direction) % 360" ) is there to translate a cartesian angle in one valid for a raster
+      # In a raster each angle will be mirrored along the Y axis thus the expression above is used to counterbalance this shift
     daf = DAF( secondary_source_concentration, x_source, y_source, 0.0, 0.0, decay_coeff, darcy_velocity, soil_adsorption, soil_density, tera_e, orthogonal_width, time,
                (540 - aquifer_flow_direction) % 360, algorithm, option )
-    # Run the function that executes the analysis chosing the version based on the presence of a target area.
-     # The function returns a vector of triples rppresenting the relevant cells and their corresponding values.
+    # Run the function that executes the analysis chosing the version based on the presence of a target area
+     # The function returns a vector of triples rppresenting the relevant cells and their corresponding values
     start = now()
     points = Functions.analysis_expand(r_source, c_source, concentration, tolerance, dem, aqf_geom, daf)
-    # Create the resulting raster in memory.
+    # Create the resulting raster in memory
     Functions.create_raster_as_subset(dem, points, output_path)
     println(now() - start)
 end
@@ -309,32 +312,34 @@ Run the simultation on the area delimited by the polygon at `target_area_file`, 
 - `output_path::String=".\\aquifer_output_model.tiff": output file path.
 
 """
-function run_aquifer( dem_file::String, source_file::String, aquifer_area_file::String, target_area_file::String, contaminantCASNum::String, concentration::Float64,
-                       aquifer_depth::Float64, aquifer_flow_direction::Int64, mean_rainfall::Float64, texture::String; time::Int64=1, orthogonal_width::Float64=10000.0,
-                       soil_density::Float64=1.70, source_thickness::Float64=1.0, darcy_velocity::Float64=0.000025, mixing_zone_depth::Float64=1.0, decay_coeff::Float64=0.0,
-                       algorithm::Symbol=:fickian, option::Symbol=:continuous, output_path::String=".\\aquifer_output_model.tiff" )
+function run_aquifer( output_path::String, dem_file::String, source_file::String, aquifer_area_file::String, target_area_file::String, contaminantCASNum::String,
+                      concentration::Float64, aquifer_depth::Float64, aquifer_flow_direction::Int64, mean_rainfall::Float64, texture::String; time::Int64=1,
+                      orthogonal_width::Float64=10000.0, soil_density::Float64=1.70, source_thickness::Float64=1.0, darcy_velocity::Float64=0.000025, mixing_zone_depth::Float64=1.0, decay_coeff::Float64=0.0,
+                      algorithm::Symbol=:fickian, option::Symbol=:continuous )
 
-    if algorithm ∉ [:fickian, :domenico]
-        throw(DomainError(algorithm, "`algorithm` must either be `:fickian` or `:domenico`"))
-    end
-
-    if option ∉ [:pulse, :continuous]
-        throw(DomainError(option, "`option` must either be `:continuous` or `:pulse`"))
-    end
+    error_msgs = ( "must be positive.", "must be greater than 0." )
+    concentration <= 0 && throw(DomainError(concentration, "`concentration` "*error_msgs[2]))
+    aquifer_depth <= 0 && throw(DomainError(aquifer_depth, "`aquifer_depth` "*error_msgs[2]))
+    mean_rainfall < 0 && throw(DomainError(mean_rainfall, "`mean_rainfall` "*error_msgs[1]))
+    time < 0 && throw(DomainError(time, "`time` "*error_msgs[1]))
+    orthogonal_width <= 0 && throw(DomainError(orthogonal_width, "`orthogonal_width` "*error_msgs[2]))
+    soil_density <= 0 && throw(DomainError(soil_density, "`soil_density` "*error_msgs[2]))
+    source_thickness <= 0 && throw(DomainError(source_thickness, "`source_thickness` "*error_msgs[2]))
+    darcy_velocity <= 0 && throw(DomainError(darcy_velocity, "`darcy_velocity` "*error_msgs[2]))
+    mixing_zone_depth <= 0 && throw(DomainError(mixing_zone_depth, "`mixing_zone_depth` "*error_msgs[2]))
+    decay_coeff < 0 && throw(DomainError(decay_coeff, "`decay_coeff` "*error_msgs[2]))
+    algorithm != :fickian && algorithm != :domenico && throw(DomainError(algorithm, "`algorithm` must either be `:fickian` or `:domenico`"))
+    option != :pulse && option != :continuous && throw(DomainError(option, "`option` must either be `:continuous` or `:pulse`"))
 
     # Read values concerning the substance that will be used in the analysis, from the database.
     henry_const, soil_adsorption = FunctionsDB.substance_extract(contaminantCASNum, ["c_henry", "koc_kd"])[1, :]
     # Check for actual results.
-    if isempty(henry_const) && isempty(soil_adsorption)
-        throw(DomainError(contaminantCASNum, "Analysis error, check input parameters"))
-    end
+    isempty(henry_const) && isempty(soil_adsorption) && throw(DomainError(contaminantCASNum, "Analysis error, check input parameters"))
 
     # Read values concerning the texture of the terrain that will be used in the analysis, from the database.
     volumetric_air_content, volumetric_water_content, effective_infiltration, tera_e, grain = FunctionsDB.texture_extract(texture, ["tot_por", "c_water_avg", "ief", "por_eff", "grain"])[1, :]
     # Check for actual results.
-    if any(isempty.([volumetric_air_content, volumetric_water_content, effective_infiltration, tera_e, grain]))
-        throw(DomainError(texture, "Analysis error, check input parameters"))
-    end
+    any( isempty, [volumetric_air_content, volumetric_water_content, effective_infiltration, tera_e, grain] ) && throw(DomainError(texture, "Analysis error, check input parameters"))
 
     src_geom, aqf_geom, trg_geom, dem = Functions.check_and_return_spatial_data(source_file, aquifer_area_file, target_area_file, dem_file)
 

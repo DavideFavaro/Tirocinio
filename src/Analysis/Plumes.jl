@@ -121,42 +121,21 @@ Create and save as `output_path` a raster containing the results of model of dis
 - `gas_temperature::Float64=0.0`: absolute temperature of the gas.
 - `temperature::Float64=0.0`: absolute ambient air temperature.
 - `output_path::String=".\\plume_otput_model.tiff"`: output file path. 
-"""#=
-function run_plume(; dem_file::String, source_file::String, stability::String, outdoor::String, concentration::Float64, tolerance::Int64=2, resolution::Float64,
-                     wind_direction::Int64, wind_speed::Float64, stack_height::Float64, stack_diameter::Float64=0.0, gas_velocity::Float64=0.0, gas_temperature::Float64=0.0,
-                     temperature::Float64=0.0, output_path::String=".\\plume_otput_model.tiff" )    
+"""
+function run_plume( output_path::String, dem_file::String, source_file::String, stability::String, outdoor::String, concentration::Float64, wind_direction::Int64,
+                    wind_speed::Float64, stack_height::Float64, stack_diameter::Float64; tolerance::Int64=2, gas_velocity::Float64=0.0, gas_temperature::Float64=0.0,
+                    temperature::Float64=0.0 )    
 
-    if outdoor ∉ ["c", "o"]
-        throw(DomainError(outdoor, "`outdoor` must either be `\"c\"` or `\"u\"`."))
-    end
+    error_msgs = ( "must be positive.", "must be greater than 0." )
+    stability ∉ ["a", "b", "c", "d", "e", "f"] && throw(DomainError(stability, "`stability` must be a letter between `\"a\"` and `\"f\"`."))
+    outdoor != "c" && outdoor != "u" && throw(DomainError(outdoor, "`outdoor` must either be `\"c\"`(country) or `\"u\"`(urban)."))
+    concentration <= 0 && throw(DomainError(concentration, "`concentration` "*error_msgs[2]))
+    wind_speed <= 0 && throw(DomainError(wind_speed, "`wind_speed` "*error_msgs[2]))
+    stack_height <= 0 && throw(DomainError(stack_height, "`stack_height` "*error_msgs[2]))
+    stack_diameter <= 0 && throw(DomainError(stack_diameter, "`stack_diameter` "*error_msgs[2]))
+    (tolerance < 1 || tolerance > 4) && throw(DomainError(tolerance, "`tolerance` value must be between 1 and 4."))
+    gas_velocity <= 0 && throw(DomainError(gas_velocity, "`gas_velocity` "*error_msgs[2]))
 
-    src_geom, dem = Functions.verify_and_return(source_file, dem_file)
-
-    # Find the location of the source in the raster (as raster indexes).
-    x_source = agd.getx(src_geom, 0)
-    y_source = agd.gety(src_geom, 0)
-    r_source, c_source = Functions.toIndexes(dem, x_source, y_source)
-    # Create an instance of the object used to aid in the analysis process.
-    plume = Plume( concentration, x_source, y_source, agd.getband(dem, 1)[r_source, c_source], stability, outdoor, stack_height, stack_diameter,
-                   (540 - wind_direction) % 360, wind_speed, gas_velocity, gas_temperature, temperature, 0.0 )
-    # Run the function that executes the analysis.
-     # The function returns a vector of triples rppresenting the relevant cells and their corresponding values.
-    points = Functions.analysis_expand(r_source, c_source, concentration, tolerance, dem, plume)
-    # Create the resulting raster in memory.
-    Functions.create_raster_as_subset(dem, points, output_path)
-end
-=#
-function run_plume( dem_file::String, source_file::String, stability::String, outdoor::String, concentration::Float64, wind_direction::Int64, wind_speed::Float64,
-                    stack_height::Float64, stack_diameter::Float64; tolerance::Int64=2, gas_velocity::Float64=0.0, gas_temperature::Float64=0.0, temperature::Float64=0.0,
-                    output_path::String=".\\plume_otput_model.tiff" )    
-
-    if tolerance < 1 || tolerance > 4
-        throw(DomainError(tolerance, "`tolerance` value must be between 1 and 4"))
-    end
-
-    if outdoor ∉ ["c", "o"]
-        throw(DomainError(outdoor, "`outdoor` must either be `\"c\"`(country) or `\"u\"`(urban)."))
-    end
 
     src_geom, dem = Functions.check_and_return_spatial_data(source_file, dem_file)
 
@@ -176,13 +155,18 @@ function run_plume( dem_file::String, source_file::String, stability::String, ou
     println(now() - start)
 end
 
-function run_plume( dem_file::String, source_file::String, target_area_file::String, stability::String, outdoor::String, concentration::Float64, wind_direction::Int64,
-                    wind_speed::Float64, stack_height::Float64, stack_diameter::Float64; gas_velocity::Float64=0.0, gas_temperature::Float64=0.0,
-                    temperature::Float64=0.0, output_path::String=".\\plume_otput_model.tiff" )    
+function run_plume( output_path::String, dem_file::String, source_file::String, target_area_file::String, stability::String, outdoor::String, concentration::Float64,
+                    wind_direction::Int64, wind_speed::Float64, stack_height::Float64, stack_diameter::Float64; gas_velocity::Float64=0.0, gas_temperature::Float64=0.0,
+                    temperature::Float64=0.0 )    
 
-    if outdoor ∉ ["c", "o"]
-        throw(DomainError(outdoor, "`outdoor` must either be `\"c\"` or `\"u\"`."))
-    end
+    error_msgs = ( "must be positive.", "must be greater than 0." )
+    stability ∉ ["a", "b", "c", "d", "e", "f"] && throw(DomainError(stability, "`stability` must be a letter between `\"a\"` and `\"f\"`"))
+    outdoor != "c" && outdoor != "u" && throw(DomainError(outdoor, "`outdoor` must either be `\"c\"`(country) or `\"u\"`(urban)."))
+    concentration <= 0 && throw(DomainError(concentration, "`concentration` "*error_msgs[2]))
+    wind_speed <= 0 && throw(DomainError(wind_speed, "`wind_speed` "*error_msgs[2]))
+    stack_height <= 0 && throw(DomainError(stack_height, "`stack_height` "*error_msgs[2]))
+    stack_diameter <= 0 && throw(DomainError(stack_diameter, "`stack_diameter` "*error_msgs[2]))
+    gas_velocity <= 0 && throw(DomainError(gas_velocity, "`gas_velocity` "*error_msgs[2]))
 
     src_geom, trg_geom, dem = Functions.check_and_return_spatial_data(source_file, dem_file, target_area_file_path=target_area_file)
 
