@@ -52,27 +52,38 @@ end
 
 
 """
-    run_lake(; dem_file::String, source_file::String, lake_area_file::String="", wind_direction::Int64, contaminant_mass::Float64, tolerance::Int64=2,
-               mean_flow_speed::Float64, resolution::Int64, hours::Float64, fickian_x::Float64=0.05, fickian_y::Float64=0.05, λk::Float64=0.0,
-               output_path::String=".\\lake_otput_model.tiff" )
+    run_lake( output_path::String, dem_file::String, source_file::String, lake_area_file::String, contaminant_mass::Float64, wind_direction::Int64, mean_flow_speed::Float64, hours::Float64; tolerance::Int64=2, fickian_x::Float64=0.05, fickian_y::Float64=0.05, λk::Float64=0.0 )
 
-Create and save as `output_path` a raster containing the results of model of dispersion of pollutants in a lake.
+Run the simulation of dispersion of contaminants in a lake, returning a raster map of the possible spread of the contaminant as `output_path`.
+
+The function will behave differently based on the presence of `tolerance` or `target_area_file`.\n
+If `tolerance` is present, the function will iteratively check the four adjacent cells from the one being evaluated, starting with the four cells around the source,
+the cells will be added to the result based on whether their concentration values are within `tolerance` orders of magnitude from the highest one found during the analysis
+(not considering the source), the execution will end when no more adjacents are found having a concentration within that specific range
+(the function will thus try to evaluate the minimimum possible number of cells).\n
+If `target_area_file` is specified, the function analysis will be limited to the designated area, checking every single cell contained within, if the target area intersects the
+natural borders of the lake, given by `lake_area_file`, the result will contain only the cells within the intersection.
 
 #Arguments
+- `output_path::String`: output file path.
 - `dem_file::String`: path to the raster containing the height of the terrain in each cell.
 - `source_file::String`: path to the shapefile containing the source point of the contaminants.
 - `lake_area_file::String=""`: path to the shapefile containing the poligon delimiting the area for the analysis.
+- `target_area_file::String`: path to the shapefile containing the polygon delimiting a specific area to be checked.\n
+    Avoid including this parameter if using `tolerance`.
 - `wind_direction::Int64`: direction of the wind as an angle in degrees.
 - `contaminant_mass::Float64`: initial mass of contaminants.
-- `tolerance::Int64=2`: value used to determine wether the concentration of pollutant in a cell is relevant.
-    Specifically, a concentration value is considered relevant if its value is within "tolerance" orders of magnitute from the concentration on other cells.
+- `tolerance::Int64=2`: value used to determine wether the concentration of pollutant in a cell is relevant.\n
+    Specifically, a concentration value is considered relevant if its value is within "tolerance" orders of magnitute from the maximum concentration found in the analysis
+    (ignoring the source).\n
+    Avoid including this parameter if using `target_area_file`.
 - `mean_flow_speed::Float64`:  mean flow speed of the water.
 - `resolution::Float64`: size of the cell for the analysis.
 - `hours::Int64`: time span of the analysis in hours.
 - `fickian_x::Float64=0.05`: X direction Fickian transport coefficient.
 - `fickian_y::Float64=0.05`: Y direction Fickian transport coefficient.
 - `λk::::Float64=0.0`: First order decadiment.
-- `output_path::String=".\\lake_otput_model.tiff"`: output file path.
+
 """
 function run_lake( output_path::String, dem_file::String, source_file::String, lake_area_file::String, contaminant_mass::Float64, wind_direction::Int64,
                    mean_flow_speed::Float64, hours::Float64; tolerance::Int64=2, fickian_x::Float64=0.05, fickian_y::Float64=0.05, λk::Float64=0.0 )

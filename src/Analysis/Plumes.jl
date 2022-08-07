@@ -98,20 +98,30 @@ end
 
 
 """
-    run_plume(; dem_file::String, source_file::String, stability::String, outdoor::String, concentration::Float64, tolerance::Int64=2, resolution::Int64,
-                wind_direction::Int64, wind_speed::Float64, stack_height::Float64, stack_diameter::Float64=0.0, gas_velocity::Float64=0.0, gas_temperature::Float64=0.0,
-                temperature::Float64=0.0, output_path::String=".\\plume_otput_model.tiff" )
+    run_plume( output_path::String, dem_file::String, source_file::String, stability::String, outdoor::String, concentration::Float64, wind_direction::Int64, wind_speed::Float64, stack_height::Float64, stack_diameter::Float64; tolerance::Int64=2, gas_velocity::Float64=0.0, gas_temperature::Float64=0.0, temperature::Float64=0.0 )
 
-Create and save as `output_path` a raster containing the results of model of dispersion of airborne pollutants.
+Run the simulation of the diffusion of airborne pollutants, returning a raster map of the possible spread of the contaminant as `output_path`.
+
+The function will behave differently based on the presence of `tolerance` or `target_area_file`.\n
+If `tolerance` is present, the function will iteratively check the four adjacent cells from the one being evaluated, starting with the four cells around the source,
+the cells will be added to the result based on whether their concentration values are within `tolerance` orders of magnitude from the highest one found during the analysis
+(not considering the source), the execution will end when no more adjacents are found having a concentration within that specific range
+(the function will thus try to evaluate the minimimum possible number of cells).\n
+If `target_area_file` is specified, the function analysis will be limited to the designated area, checking every single cell contained within.
 
 # Arguments
+- `output_path::String`: output file path.
 - `dem_file::String`: path to the raster containing the height of the terrain in each cell.
 - `source_file::String`: path to the shapefile containing the source point of the plume.
-- `stability::String`: atmosphere Pasquill class stability.
+- `target_area_file::String`: path to the shapefile containing the polygon delimiting a specific area to be checked.\n
+    Avoid including this parameter if using `tolerance`.
+- `stability::String`: atmosphere Pasquill class stability.\n
+    Must be a letter between: `\"a\"` (great instability), `\"b\"` (moderate instability), `\"c\"` (slight instability), `\"d\"` (neutral), `\"e\"` (slight stablility) and `\"f\"` (moderate stablility)
 - `outdoor::String`: type of environment, either `\"c\"` (country) or `\"u\"` (urban).
 - `concentration::Float64`: rate of chemical emission.
-- `tolerance::Int64=2`: value used to determine wether the concentration of pollutant in a cell is relevant.
-    Specifically, a concentration value is considered relevant if its value is within "tolerance" orders of magnitute from the concentration on other cells.
+- `tolerance::Int64=2`: value used to determine wether the concentration of pollutant in a cell is relevant.\n
+    Specifically, a concentration value is considered relevant if its value is within "tolerance" orders of magnitute from the maximum concentration found in the analysis
+    (ignoring the source).\n
 - `resolution::Int64`: size of the cell in meters.
 - `wind_direction::Int64`: angle of main direction of the wind in degrees.
 - `wind_speed::Float64`: average wind speed in the main direction.
@@ -120,7 +130,7 @@ Create and save as `output_path` a raster containing the results of model of dis
 - `gas_velocity::Float64=0.0`: gas velocity.
 - `gas_temperature::Float64=0.0`: absolute temperature of the gas.
 - `temperature::Float64=0.0`: absolute ambient air temperature.
-- `output_path::String=".\\plume_otput_model.tiff"`: output file path. 
+
 """
 function run_plume( output_path::String, dem_file::String, source_file::String, stability::String, outdoor::String, concentration::Float64, wind_direction::Int64,
                     wind_speed::Float64, stack_height::Float64, stack_diameter::Float64; tolerance::Int64=2, gas_velocity::Float64=0.0, gas_temperature::Float64=0.0,

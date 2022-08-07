@@ -9,8 +9,8 @@ using JLD2
 
 
 
-export CCSTree,
-       createRTree, createCCSTree,
+export TerrainTree,
+       createRTree, createTerrainTree,
        check, exists_terrain_type, find_terrain_type_similar,
        findPolygon, findKNN,
        saveTree, loadTree
@@ -21,27 +21,17 @@ const agd = ArchGDAL
 const si = SpatialIndexing
 
 
-
-
-
-
-
-
-
-
-#=
-POTREBBE ESSERE UTILE AVERE DEI VETTORI DI APPOGGIO CHE CONTENGANO TUTTI I POSSIBILI VALORI DEI VARI ATTRIBUTI DEI POLIGONI,
-IN QUESTO VERIFICARE SE UN POLIGONO CON UN CERTO VALORE DI UN CERTO ATTRIBUTO ESISTE DIVENTA TRIVIALE, INVECE DI RICHIEDERE
-DI RICERCARE UN POLIGONO CON QUELL'ATTRIBUTO IN TUTTO L'ALBERO.
-=#
-mutable struct CCSTree
+"""
+Ment to contain polygons describing terrain types.\n
+Is formed by a `SpatialIndexing.RTree`, with the geometries and their data, and a `Dict{Float64, String}`
+pairing the terrain types to their respective codes, making easier and faster to verify the presence of specific ones, without having to check all polygons in the tree. 
+"""
+mutable struct TerrainTree
     terrain_types::Dict{Float64, String}
     tree::SpatialIndexing.RTree{Float64, 2}
 
-    CCSTree(tree) = new(Dict{Float64, String}(), tree)
+    TerrainTree(tree) = new(Dict{Float64, String}(), tree)
 end
-
-
 
 
 
@@ -60,28 +50,28 @@ function Base.show( io::IO, rtree::SpatialIndexing.RTree{T, N} ) where {T, N}
 end
 
 """
-    Base.show(io::IO, ccstree::CCSTree)
+    Base.show(io::IO, ttree::TerrainTree)
 
-Write a text reppresentation of `CCSTree` object `ccstree` to the output stream `io`.
+Write a text reppresentation of `TerrainTree` object `ttree` to the output stream `io`.
 """
-function Base.show( io::IO, ccstree::CCSTree )
-    println(io, typeof(ccstree), ":")
-    println(io, "\tTerrain typologies: ", length(ccstree.terrain_types))
-    println(io, "\tPolygons: ", ccstree.tree.nelems)
-    println(io, "\tLevels: ", ccstree.tree.root.level)
+function Base.show( io::IO, ttree::TerrainTree )
+    println(io, typeof(ttree), ":")
+    println(io, "\tTerrain typologies: ", length(ttree.terrain_types))
+    println(io, "\tPolygons: ", ttree.tree.nelems)
+    println(io, "\tLevels: ", ttree.tree.root.level)
     println(io, "\tNodes per level:")
-    println(io, "\t", reverse(ccstree.tree.nnodes_perlevel) )
-    println(io, "\tRoot MBR:", ccstree.tree.root.mbr)
+    println(io, "\t", reverse(ttree.tree.nnodes_perlevel) )
+    println(io, "\tRoot MBR:", ttree.tree.root.mbr)
 end
 
 
 """
-    SpatialIndexing.check( ccstree::CCSTree )
+    SpatialIndexing.check( ttree::TerrainTree )
 
-Check wether a `CCSTree` is well formed.
+Check wether a `TerrainTree` is well formed.
 """
-function check( ccstree::CCSTree )
-    return si.check(ccstree.tree)
+function check( ttree::TerrainTree )
+    return si.check(ttree.tree)
 end
 
 
@@ -186,18 +176,18 @@ end
 
 
 """
-    createCCSTree( file_path::String, branch_capacity::Int64=7, leaf_capacity::Int64=7 )
+    createTerrainTree( file_path::String, branch_capacity::Int64=7, leaf_capacity::Int64=7 )
 
-Create a CCSTree based on a vectorial file at `file_path` containing a series of polygons decribing the terrain composition of an area.
+Create a TerrainTree based on a vectorial file at `file_path` containing a series of polygons decribing the terrain composition of an area.
 The  created object will contain a field `terrain_types` containing a `Vector{Tuple{Int64, String}}` holding the codes and descriptions of
 all the possible kinds of terrain found in the vectorial file.
 The "tree" field of the object will instead contain a `SpatialIndexing.RTree{Float64, 2}` with all the polygons of the file.
 """
-function createCCSTree( file_path::String, branch_capacity::Int64=7, leaf_capacity::Int64=7 )
+function createTerrainTree( file_path::String, branch_capacity::Int64=7, leaf_capacity::Int64=7 )
  # Obtain all the "features" ("polygons" + additional information) of the file
     features = collect(agd.getlayer(agd.read(file_path), 0))
- # Create the CCSTree from an empty RTree
-    ccstree = CCSTree( RTree{Float64, 2}(Float64, NamedTuple, branch_capacity=branch_capacity, leaf_capacity=leaf_capacity) )
+ # Create the TerrainTree from an empty RTree
+    ttree = TerrainTree( RTree{Float64, 2}(Float64, NamedTuple, branch_capacity=branch_capacity, leaf_capacity=leaf_capacity) )
   # Insert all of the relevant data of all the features in the tree as nodes
     for feature in features
      # Obtain the geometry (polygon) of the feature
@@ -208,44 +198,44 @@ function createCCSTree( file_path::String, branch_capacity::Int64=7, leaf_capaci
         if si.isvalid(feature_mbr)
          # Get the code that identifies the kind of landcover of the polygon
             num_code = agd.getfield(feature, :codice_num)
-         # Insert the new node corresponding to the feature in the "tree" field of the CCSTree
-            si.insert!( ccstree.tree, feature_mbr, agd.getfield(feature, :objectid), ( code=num_code, geometry=geom ) )
-         # Insert the landcover type in the dictionary in the field "terrain_types" of the CCSTree along with its description
-            push!( ccstree.terrain_types, num_code => agd.getfield(feature, :legenda) )
+         # Insert the new node corresponding to the feature in the "tree" field of the TerrainTree
+            si.insert!( ttree.tree, feature_mbr, agd.getfield(feature, :objectid), ( code=num_code, geometry=geom ) )
+         # Insert the landcover type in the dictionary in the field "terrain_types" of the TerrainTree along with its description
+            push!( ttree.terrain_types, num_code => agd.getfield(feature, :legenda) )
         else
             println("Omitted feature $(agd.getfield(feature, :objectid)), the feature mbr is not valid.")
         end
     end
   # Check that the tree is well-build
-    return check(ccstree) ? ccstree : throw(DomainError("Error in the creation of the tree, check input parameters"))
+    return check(ttree) ? ttree : throw(DomainError("Error in the creation of the tree, check input parameters"))
 end
 
 
 
 """
-    exists_terrain_type( tree::CCSTree, type_code::Int64 )
+    exists_terrain_type( tree::TerrainTree, type_code::Int64 )
 
 Check if the type of terrain corresponding to `type_code` exists in at least one polygon of `tree`.
 """
-exists_terrain_type( tree::CCSTree, type_code::Int64 ) = type_code in keys(tree.terrain_types)
+exists_terrain_type( tree::TerrainTree, type_code::Int64 ) = type_code in keys(tree.terrain_types)
 
 """
-    exists_terrain_type( tree::CCSTree, type_description::String )
+    exists_terrain_type( tree::TerrainTree, type_description::String )
 
 Check if the type of terrain described by `type_description` exists in at least one polygon of `tree`.
 Note: `type_description` must match exactly the description of the terrain type, if the complete description is not
 known, consider using function `find_terrain_type_similar` instead.
 """
-exists_terrain_type( tree::CCSTree, type_description::String ) = type_description in values(tree.terrain_types)
+exists_terrain_type( tree::TerrainTree, type_description::String ) = type_description in values(tree.terrain_types)
 
 
 
 """
-    find_terrain_type_similar( tree::CCSTree, type::String )
+    find_terrain_type_similar( tree::TerrainTree, type::String )
 
 Return a `Dict{Int64, String}` containing all the codes and the respective descriptions in which the latter contains `type` as a substring. 
 """
-find_terrain_type_similar( tree::CCSTree, type::String ) = filter( (k, v) -> contains(v, type), tree.terrain_types )
+find_terrain_type_similar( tree::TerrainTree, type::String ) = filter( (k, v) -> contains(v, type), tree.terrain_types )
 
 
 
@@ -293,11 +283,11 @@ function findPolygons( tree::SpatialIndexing.RTree{T,N}, polygon::ArchGDAL.IGeom
 end
 
 """
-    findPolygons( tree::CCSTree, polygon::ArchGDAL.IGeometry{ArchGDAL.wkbPolygon} ) where {T, N}
+    findPolygons( tree::TerrainTree, polygon::ArchGDAL.IGeometry{ArchGDAL.wkbPolygon} ) where {T, N}
 
 Return all the polygons of `tree` intersected by, contained in or containing `polygon`, or the polygon that conains it, or an empty `Vector{SpatialIndexing.SpatialElem}`, if there is no such polygon.
 """
-function findPolygons( tree::CCSTree, polygon::ArchGDAL.IGeometry{ArchGDAL.wkbPolygon} ) where {T, N}
+function findPolygons( tree::TerrainTree, polygon::ArchGDAL.IGeometry{ArchGDAL.wkbPolygon} ) where {T, N}
     return findPolygon(tree.tree.root, polygon)
 end
 
@@ -361,11 +351,11 @@ function findKNN( tree::SpatialIndexing.RTree{T,N}, point::SpatialIndexing.Point
 end
 
 """
-    findKNN( tree::CCSTree, point::SpatialIndexing.Point{T,N}, k::Int64 ) where {T, N}
+    findKNN( tree::TerrainTree, point::SpatialIndexing.Point{T,N}, k::Int64 ) where {T, N}
 
 Return the `k` `SpatialIndexing.SpatialElem`s contained in `tree` that are closest to `point` (at most k elements will be returned).
 """
-function findKNN( tree::CCSTree, point::SpatialIndexing.Point{T,N}, k::Int64 ) where {T, N}
+function findKNN( tree::TerrainTree, point::SpatialIndexing.Point{T,N}, k::Int64 ) where {T, N}
     return findKNN(tree.tree.root, point, k)
 end
 
@@ -430,11 +420,11 @@ function findPolygons( tree::SpatialIndexing.RTree{T,N}, point::SpatialIndexing.
 end
 
 """
-    findPolygons( tree::CCSTree, point::SpatialIndexing.Point{T,N}, distance::Float64 ) where {T, N}
+    findPolygons( tree::TerrainTree, point::SpatialIndexing.Point{T,N}, distance::Float64 ) where {T, N}
 
 Return all the `SpatialIndexing.SpatialElem`s contained in `tree` that are within `distance` from `point`.
 """
-function findPolygons( tree::CCSTree, point::SpatialIndexing.Point{T,N}, distance::Float64 ) where {T, N}
+function findPolygons( tree::TerrainTree, point::SpatialIndexing.Point{T,N}, distance::Float64 ) where {T, N}
     return findPolygons(tree.tree.root, point, distance)
 end
 
@@ -442,11 +432,11 @@ end
 
 # ----------------------------------------------------------- LOADING AND SAVING -----------------------------------------------------------------------------
 """
-    saveTree( tree::Union{SpatialIndexing.RTree{T, N}, CCSTree}, output_file::AbstractString=".\\tree.jld2" ) where {T, N}
+    saveTree( tree::Union{SpatialIndexing.RTree{T, N}, TerrainTree}, output_file::AbstractString=".\\tree.jld2" ) where {T, N}
 
 Save `tree` as a file in the directory and with the name specified by `output_file` in Julia Data format 2 (JLD2).
 """
-function saveTree( tree::Union{SpatialIndexing.RTree{T, N}, CCSTree}, output_file::AbstractString=".\\tree.jld2" ) where {T, N}
+function saveTree( tree::Union{SpatialIndexing.RTree{T, N}, TerrainTree}, output_file::AbstractString=".\\tree.jld2" ) where {T, N}
     if !occursin(output_file, ".jld2")
         output_file *= ".jld2"
     end
@@ -458,309 +448,10 @@ end
 """
     loadTree( tree_file::AbstractString )
 
-Load a `SpatialIndexing.RTree{T, N}` or a `CCSTree` saved as `tree_file`.
+Load a `SpatialIndexing.RTree{T, N}` or a `TerrainTree` saved as `tree_file`.
 """
 function loadTree( tree_file::AbstractString )
     return load_object(tree_file) 
-end
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-#=
-# Serve un modo per simulare la possibilità di aggiungere campi in modo da poter creare strutture che si adattino al numero di
-# attributi rilevanti di cui si vuole ottenere la lista degli unici.
-mutable struct Fields
-    fields::Dict{Symbol, Any}
-
-    Fields(fields) = new(fields)
-end
-
-
-mutable struct Cesto
-    frutti::Fields
-
-    function Cesto( frutti..., numeri... )
-        if length(frutti) != length(numeri)
-            throw(DomainError("`frutti` e `numeri` per ogni frutto deve esserci un numero"))
-        end
-        for (f, n) in zip(frutti, numeri)
-            dict = Dict( Symbol(f) => n )
-        end
-    end 
-end
-=#
-
-
-
-
-
-using ArchGDAL
-
-const agd = ArchGDAL
-
-ccs_file = "C:\\Users\\Lenovo\\Documents\\GitHub\\Tirocinio\\resources\\Analysis data\\ccs\\ccs.shp"
-ccs = agd.read(ccs_file)
-features =  collect(agd.getlayer(ccs, 0))
-features[1]
-
-
-ccstree = createCCSTree("C:\\Users\\Lenovo\\Documents\\GitHub\\Tirocinio\\resources\\Analysis data\\ccs\\ccs.shp")
-
-
-rtree = createRTree("C:\\Users\\Lenovo\\Documents\\GitHub\\Tirocinio\\resources\\Analysis data\\ccs\\ccs.shp")
-
-
-
-
-#= ---------------------------- TREE TESTING [V] --------------------------------
-
-#   ccs_shp = agd.read("C:\\Users\\Lenovo\\Documents\\GitHub\\Tirocinio\\resources\\Analysis data\\ccs\\ccs.shp")
-ccs_shp = agd.read("D:\\Z_Tirocinio_Dati\\ccs WGS84\\ccs.shp")
-features =  collect(agd.getlayer(ccs_shp, 0))
-
-tree = nothing
-GC.gc()
-tree = RTree{Float64, 2}(Float64, NamedTuple, branch_capacity=7, leaf_capacity=7)
-for feature in features
-    geom = agd.getgeom(feature, 0)
-    feature_mbr = mbr(geom)
-    if si.isvalid(feature_mbr)
-        si.insert!( tree, feature_mbr, agd.getfield(feature, :objectid), ( code=agd.getfield(feature, :codice_num), geometry=geom ) )
-    end
-end
-si.check(tree)
-tree.nnodes_perlevel
-
-
-=#
-#= ---------------------------- QUERY TESTING [V] --------------------------------
-
-# Multilinea di contorno al poligono
-geom = agd.getgeom( agd.getgeom(features[311113]), 0 )
-# NUmber of vertexes of the poligon
-num_points = agd.ngeom(geom)
-# Coordinates of points inside the polygon:
-#   Average of each coordinate of the vertexes
-xt1 = sum( j -> agd.getx(geom, j), 0:num_points-1 ) / Float64(num_points)
-yt1 = sum( j -> agd.gety(geom, j), 0:num_points-1 ) / Float64(num_points)
-#   Average of 3 vertexes
-xt2 = sum( j -> agd.getx(geom, j), 0:2 ) / 3.0
-yt2 = sum( j -> agd.gety(geom, j), 0:2 ) / 3.0
-#   In the middle of an edge (mean of 2 vertexes)
-xt3 = sum( j -> agd.getx(geom, j), 0:1 ) / 2.0
-yt3 = sum( j -> agd.gety(geom, j), 0:1 ) / 2.0
-# In the first half of the polygon
-xt4 = sum( j -> agd.getx(geom, j), 0:(num_points÷2)-1 ) / (num_points÷2)
-yt4 = sum( j -> agd.gety(geom, j), 0:(num_points÷2)-1 ) / (num_points÷2)
-
-
-#= Results for each ponint
-    res = findPolygon(tree, si.Point((xt1, yt1)))
-    res = findPolygon(tree, si.Point((xt2, yt2)))
-    res = findPolygon(tree, si.Point((xt3, yt3)))
-    res = findPolygon(tree, si.Point((xt4, yt4)))
-=#
-
-res1 = knn( tree, si.Point((xt1, yt1)), 3 )
-res2 = knn( tree, si.Point((xt2, yt2)), 3 )
-res3 = knn( tree, si.Point((xt3, yt3)), 3 )
-res4 = knn( tree, si.Point((xt4, yt4)), 3 )
-
-
-
-sat_shp = agd.read(split( @__DIR__ , "\\Porting\\")[1] * "\\Mappe\\sat WGS84\\sette_sorelle.shp")
-sat = agd.getgeom(collect(agd.getlayer(sat_shp, 0))[1])
-res = findPolygon(tree, sat)
-# Get the result in decreasing order based on the surface of the polygon
-sort!( res, lt=(x, y) -> agd.geomarea(x.val.geometry) < agd.geomarea(y.val.geometry), rev=true )
-
-# Id di tutti i poligoni intersecati dal poligono "sette_sorelle" (ottenuti con QGIS)
-objectids = [
-    192271, 192307, 197591, 214336, 214356, 214422,
-    214518, 214606, 214777, 214840, 214967, 214999,
-    215264, 215314, 215391, 215555, 215918, 215944,
-    221275, 221300, 221335, 221415, 221641, 222633,
-    223271, 231330, 232459, 232478, 232492, 232541,
-    240004, 240325, 240533, 240803, 240903, 241012,
-    241266, 241369, 241738, 249519, 249534, 249542,
-    249588, 249619, 249622, 252658, 252687, 252737,
-    252754, 252931, 258981, 261396, 261404, 261417,
-    262501, 263548, 263567, 263578, 263584, 263602,
-    263625, 265696, 265697, 265699, 265700, 265701,
-    265702, 265703, 265704, 265705, 265706, 265708,
-    265709, 265711, 265712, 265714, 265715, 267016,
-    267021, 267029, 267043, 267064, 395922, 396242,
-    396281
-]
-
-# Check that all the returned polygons are correct
-all(r -> r.id in objectids, res)
-resids = [ Int64(r.id) for r in res ]
-# Check whether there are any missing polygon 
-all(id -> id in resids, objectids)
-
-#=  PER SALVARE GLI ID TROVATI
-    path = "C:\\Users\\DAVIDE-FAVARO\\Desktop\\Dati\\res_ids.txt"
-    path = "D:\\Documents and Settings\\DAVIDE-FAVARO\\My Documents\\GitHub\\Tirocinio\\Mappe\\polygon_ids.txt"
-    open( path, "w" ) do io
-        for id in objectids
-            write(io, "$id\n")
-        end
-    end
-=#
-
-
-=#
-#= ---------------------------- SAVE TESTING [V] --------------------------------
-
-path = "D:\\Z_Tirocinio_Dati\\tree_test.jld2"
-save_object(path, tree)
-loaded_tree = load_object(path);
-si.check(loaded_tree)
-l_res = findPolygon(loaded_tree, si.Point((xt1, yt1)))
-l_res = findPolygon(loaded_tree, si.Point((xt2, yt2)))
-l_res = findPolygon(loaded_tree, si.Point((xt3, yt3)))
-
-
-=#
-# ---------------------------- PLOT TESTING [V] --------------------------------
-# PRESO DA "plot_utils.jl" CONTENUTO IN "https://github.com/alyst/SpatialIndexing.jl/tree/master/examples"
-
-using PlotlyJS
-using Printf: @sprintf
-
-const SI = SpatialIndexing
-
-# webcolor palette for R-tree levels
-const LevelsPalette = Dict(
-    1 => "#228B22", # Forest Green
-    2 => "#DAA520", # Goldenrod
-    3 => "#FF6347", # Tomato
-    4 => "#B22222", # Firebrick
-    5 => "#4B0082", # Indigo
-    6 => "#800080", # Purple
-    7 => "#4169E1", # Royal blue
-    8 => "#008080", # Teal
-    9 => "#00FFFF", # Cyan
-)
-
-# create plotly trace for a single R-tree `node` (rectangle edges)
-function node_trace(node::SI.Node{<:Any,2}, ix::Union{Integer, Nothing};
-                    showlegend::Bool)
-    nbr = SI.mbr(node)
-    res = scatter(x = [nbr.low[1], nbr.high[1], nbr.high[1], nbr.low[1], nbr.low[1]],
-                  y = [nbr.low[2], nbr.low[2], nbr.high[2], nbr.high[2], nbr.low[2]],
-                  mode=:lines, line_color=get(LevelsPalette, SI.level(node), "#708090"),
-                  line_width=SI.level(node),
-                  hoverinfo=:text, hoveron=:points,
-                  text="lev=$(SI.level(node)) ix=$(ix !== nothing ? ix : "none")<br>nchildren=$(length(node)) nelems=$(SI.nelements(node)) area=$(@sprintf("%.2f", SI.area(SI.mbr(node))))",
-                  name="level $(SI.level(node))",
-                  legendgroup="level $(SI.level(node))", showlegend=showlegend)
-    return res
-end
-
-# create plotly trace for a single R-tree `node` (cube edges)
-function node_trace(node::SI.Node, ix::Union{Integer, Nothing};
-                    showlegend::Bool)
-    nbr = SI.mbr(node)
-    res = scatter3d(x = [nbr.low[1],  nbr.high[1], nbr.high[1], nbr.low[1], nbr.low[1],
-                         nbr.low[1],  nbr.high[1], nbr.high[1], nbr.low[1], nbr.low[1],
-                         NaN, nbr.low[1], nbr.low[1],
-                         NaN, nbr.high[1], nbr.high[1],
-                         NaN, nbr.high[1], nbr.high[1]],
-                    y = [nbr.low[2],  nbr.low[2],  nbr.high[2], nbr.high[2], nbr.low[2],
-                         nbr.low[2],  nbr.low[2],  nbr.high[2], nbr.high[2], nbr.low[2],
-                         NaN, nbr.high[2], nbr.high[2],
-                         NaN, nbr.high[2], nbr.high[2],
-                         NaN, nbr.low[2], nbr.low[2]],
-                    z = [nbr.low[3],  nbr.low[3],  nbr.low[3],  nbr.low[3], nbr.low[3],
-                         nbr.high[3], nbr.high[3], nbr.high[3], nbr.high[3], nbr.high[3],
-                         NaN, nbr.low[3], nbr.high[3],
-                         NaN, nbr.low[3], nbr.high[3],
-                         NaN, nbr.low[3], nbr.high[3]],
-                  mode=:lines, line_color=get(LevelsPalette, SI.level(node), "#708090"),
-                  line_width=SI.level(node),
-                  hoverinfo=:text, hoveron=:points,
-                  text="lev=$(SI.level(node)) ix=$(ix !== nothing ? ix : "none")<br>nchildren=$(length(node)) nelems=$(SI.nelements(node)) area=$(@sprintf("%.2f", SI.area(SI.mbr(node))))",
-                  name="level $(SI.level(node))",
-                  legendgroup="level $(SI.level(node))", showlegend=showlegend)
-    return res
-end
-
-# create plotly traces for the nodes in a subtree with the `node` root
-# and append them to `node_traces`
-function append_subtree_traces!(node_traces::Vector{PlotlyBase.AbstractTrace},
-                                node::SI.Node, ix::Union{Integer, Nothing},
-                                levels::Set{Int})
-    push!(node_traces, node_trace(node, ix, showlegend = SI.level(node) ∉ levels))
-    push!(levels, SI.level(node)) # show each level once in legend
-    if node isa SI.Branch
-        for (i, child) in enumerate(SI.children(node))
-            append_subtree_traces!(node_traces, child, i, levels)
-        end
-    end
-    return nothing
-end
-
-data_trace(tree::RTree{<:Any, 2}) =
-    scatter(mode=:markers, name=:data, marker_color = "#333333", marker_size = 2,
-            x=[SI.center(SI.mbr(x)).coord[1] for x in tree],
-            y=[SI.center(SI.mbr(x)).coord[2] for x in tree],
-            text=["id=$(SI.id(x))" for x in tree], hoverinfo=:text)
-
-data_trace(tree::RTree) =
-    scatter3d(mode=:markers, name=:data, marker_color = "#333333", marker_size = 2,
-              x=[SI.center(SI.mbr(x)).coord[1] for x in tree],
-              y=[SI.center(SI.mbr(x)).coord[2] for x in tree],
-              z=[SI.center(SI.mbr(x)).coord[3] for x in tree],
-              text=["id=$(SI.id(x))" for x in tree], hoverinfo=:text)
-
-# create Plotly plot of the given tree
-function PlotlyJS.plot(tree::RTree)
-    ndims(tree) == 1 && throw(ArgumentError("1-D R-trees not supported"))
-    ndims(tree) > 3 && @warn("Only 1st-3rd dimensions would be shown for $(ndims(tree))-D trees")
-    node_traces = Vector{PlotlyBase.AbstractTrace}()
-    append_subtree_traces!(node_traces, tree.root, nothing, Set{Int}())
-    PlotlyJS.plot([node_traces; [data_trace(tree)]], Layout(hovermode=:closest))
-end
-
-
-
-
-
-# MOLTO PESANTE A LIVELLO DI PRESTAZIONI
-tree_plot = plot(tree);
-open( "C:\\Users\\DAVIDE-FAVARO\\Desktop\\Dati\\tree_plot.png", "w" ) do io
-    PlotlyJS.savefig(io, tree_plot, width=900, height=1000)
 end
 
 

@@ -71,13 +71,19 @@ end
 
 
 """
-    run_sediment(; dem_file::String, source_file::String, resolution::Float64, mean_flow_speed::Float64, mean_depth::Float64, x_dispersion_coeff::Float64,
-                   y_dispersion_coeff::Float64, dredged_mass::Float64, tolerance::int64=2, flow_direction::Float64, mean_sedimentation_velocity::Float64,
-                   time::Int64, time_intreval::Int64, current_oscillatory_amplitude::Float64=0.0, tide::Int64=0, output_path::String=".\\sediment_output_model.tiff" )
+    run_sediment( output_path::String, dem_file::String, source_file::String, mean_flow_speed::Float64, mean_depth::Float64, x_dispersion_coeff::Float64, y_dispersion_coeff::Float64, dredged_mass::Float64, flow_direction::Int64, mean_sedimentation_velocity::Float64, time::Int64, time_intreval::Int64; tolerance::Int64=2, current_oscillatory_amplitude::Float64=0.0, tide::Int64=0 )
 
-Create and save as `output_path` a raster containing the results of model of plumes of turbidity induced by dredging.
+Run the simulation of plumes of turbidity induced by dredging, returning a raster map of the possible area of impact as `output_path`.
+
+The function will behave differently based on the presence of `tolerance` or `target_area_file`.\n
+If `tolerance` is present, the function will iteratively check the four adjacent cells from the one being evaluated, starting with the four cells around the source,
+the cells will be added to the result based on whether their concentration values are within `tolerance` orders of magnitude from the highest one found during the analysis
+(not considering the source), the execution will end when no more adjacents are found having a concentration within that specific range
+(the function will thus try to evaluate the minimimum possible number of cells).\n
+If `target_area_file` is specified, the function analysis will be limited to the designated area, checking every single cell contained within.
 
 # Arguments
+- `output_path::String`: output file path.
 - `dem_file::String`: path to the raster of terrain.
 - `source_file::String`: path to the shapefile containing the dredging source point.
 - `resolution::Float64`: size of a cell in meters.
@@ -95,7 +101,7 @@ Create and save as `output_path` a raster containing the results of model of plu
 - `time_intreval::Int64`: length of an epoch.
 - `current_oscillatory_amplitude::Int64=0`: water oscillatory amplitude.
 - `tide::Int64=0`: tidal cycle in hours.
-- `output_path::String=".\\output_model_sediments.tiff"`: path of the resulting raster.
+
 """
 function run_sediment( output_path::String, dem_file::String, source_file::String, mean_flow_speed::Float64, mean_depth::Float64, x_dispersion_coeff::Float64,
                        y_dispersion_coeff::Float64, dredged_mass::Float64, flow_direction::Int64, mean_sedimentation_velocity::Float64, time::Int64, time_intreval::Int64;

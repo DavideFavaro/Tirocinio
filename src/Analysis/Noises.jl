@@ -25,10 +25,6 @@ const sf = Shapefile
 
 
 
-repeat!( A::AbstractVector, count::Int64 ) = append!( A, repeat(A, count-1) )
-
-
-
 """
     transmission_loss( dn::Float64, d0::Float64=1.0 )
 
@@ -930,14 +926,16 @@ end
 
 
 
-
 """
-    DDA( dtm::GeoArrays.GeoArray{Float32}, impedences::GeoArrays.GeoArray{Float32}, r0::Int64, c0::Int64, rn::Int64, cn::Int64 )
+    get_profile( dtm::GeoArrays.GeoArray{Float32}, impedences::GeoArrays.GeoArray{Float32}, r0::Int64, c0::Int64, rn::Int64, cn::Int64 )
 
-Digital Differential Analyzer, rasterizes a line from indexes (`r0`, `c0`) to (`rn`,`cn`) returning all the cells in `dtm` and `impedences` (The two rasters must
-contain the heights and the resistivity concerning the same terrain) crossed by the line.
+Rasterize the line ranging from indexes (`r0`, `c0`) to (`rn`,`cn`), returning: a `Vector{Int64}` of the cells in terrain height matrix `dtm` and
+a `Vector{Float32}` of  the ones in terrain impedence matrix `impedences` crossed by the line (The two matrices must reppresent the same terrain),
+as well as a `Vector{Tuple{Float64, Float64}}` with the coordinates of all the aforementioned cells.
 """
-function DDA( dtm::AbstractArray{Float32}, impedences::AbstractArray{Float32}, r0::Int64, c0::Int64, rn::Int64, cn::Int64 )
+function get_profile( dtm::AbstractArray{Float32}, impedences::AbstractArray{Float32}, r0::Int64, c0::Int64, rn::Int64, cn::Int64 )
+    
+    size(dtm) .!= size(impedences) && throw(DomainError("The matrices must have the same dimensions"))
     Δr = rn - r0
     Δc = cn - c0
     steps = max( abs(Δr), abs(Δc) )
@@ -962,24 +960,25 @@ end
 
 
 """
-    run_noise( dem_file::String, terrain_impedences::String, source_file::String, temperature_K::Float64, relative_humidity::Float64, dB::Float64, frequency::Float64 )
+    run_noise( output_path::String, dem_file::String, terrain_impedences_file::String="", source_file::String, temperature::Float64, relative_humidity::Float64, intensity_dB::Float64, frequency::Float64 )
 
-Create and save as `output_path` a raster containing the results of model of dispersion of airborne pollutants.Run a simulation of plumes of turbidity induced by dredging.
+Run the simulation of diffusion of a sound, returning a raster map of the possible area of impact as `output_path`.
 
-#Arguments
+# Arguments
+- `output_path::String`: output file path.
 - `dem_file::String`: path to the raster containing the height of the terrain in each cell.
 - `terrain_impedence_file::String`: path to the raster containing the terrain impedences.
 - `source_file::String`: path to the shapefile containing the source point of the noise.
-- `temperature_K::Float64`: outside mean temperature in kelvin. 
+- `temperature::Float64`: outside mean temperature in Celsius degrees. 
 - `relative_humidity::Float64`: relative humidity.
 - `intensity_dB::Float64`: sound intenisty in decibel.
 - `frequency::Float64`: frequency of the sound in hertz.
+
 """
-function run_noise(  output_path::String, dem_file::String, terrain_impedences_file::String="", source_file::String, temperature_K::Float64, relative_humidity::Float64,
-                     intensity_dB::Float64, frequency::Float64 )
+function run_noise( output_path::String, dem_file::String, terrain_impedences_file::String="", source_file::String, temperature::Float64, relative_humidity::Float64,
+                    intensity_dB::Float64, frequency::Float64 )
 
     error_msgs = ( "must be positive.", "must be greater than 0." )
-
     # 192dB is the maximum value possible in decibel for sound pressure level (dB S.P.L.) within Earth's atmosphere.
      # Also, it is worth mentioning that a value of `intensity_dB` greater than 392 would cause a Integer overflow for the computation of `max_radius`.
       # Integer overflow is achived for Int64 powers of 10, when 10^x > 2^63, so for x > 18, which would result, in the computations below, for `intensity_dB > 392`.
@@ -989,6 +988,7 @@ function run_noise(  output_path::String, dem_file::String, terrain_impedences_f
 
     # Input rasters and source point
     noData = -9999.0f0
+    temperature += 273.15
     dtm = replace( ga.read(dem_file), missing => noData )
     impedences = replace( ga.read(terrain_impedences_file), missing => noData )
     src = sf.Table(source_file)
@@ -1027,7 +1027,7 @@ function run_noise(  output_path::String, dem_file::String, terrain_impedences_f
     @inbounds for point in endpoints
         for α in 0:90:270
             # Arrays of the heigths and the respective coordnates
-            heights, impdcs, coords = DDA( dtm, impedences, r0, c0, Functions.rotate_point(point..., r0, c0, α)... )
+            heights, impdcs, coords = get_profile( dtm, impedences, r0, c0, Functions.rotate_point(point..., r0, c0, α)... )
             # Array of the distances of each point of the profile from the source
             dists = Float64[ Functions.edistance(x0, y0, coords[1]...) ]
             # Compute the array of the resulting attenuations for each point of a single profile
