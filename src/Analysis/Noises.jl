@@ -935,7 +935,7 @@ as well as a `Vector{Tuple{Float64, Float64}}` with the coordinates of all the a
 """
 function get_profile( dtm::AbstractArray{Float32}, impedences::AbstractArray{Float32}, r0::Int64, c0::Int64, rn::Int64, cn::Int64 )
     
-    size(dtm) .!= size(impedences) && throw(DomainError("The matrices must have the same dimensions"))
+    any( size(dtm) .!= size(impedences) ) && throw(DomainError("The matrices must have the same dimensions"))
     Δr = rn - r0
     Δc = cn - c0
     steps = max( abs(Δr), abs(Δc) )
@@ -960,7 +960,7 @@ end
 
 
 """
-    run_noise( output_path::String, dem_file::String, terrain_impedences_file::String="", source_file::String, temperature::Float64, relative_humidity::Float64, intensity_dB::Float64, frequency::Float64 )
+    run_noise( output_path::String, dem_file::String, terrain_impedences_file::String, source_file::String, temperature::Float64, relative_humidity::Float64, intensity_dB::Float64, frequency::Float64 )
 
 Run the simulation of diffusion of a sound, returning a raster map of the possible area of impact as `output_path`.
 
@@ -975,14 +975,14 @@ Run the simulation of diffusion of a sound, returning a raster map of the possib
 - `frequency::Float64`: frequency of the sound in hertz.
 
 """
-function run_noise( output_path::String, dem_file::String, terrain_impedences_file::String="", source_file::String, temperature::Float64, relative_humidity::Float64,
+function run_noise( output_path::String, dem_file::String, terrain_impedences_file::String, source_file::String, temperature::Float64, relative_humidity::Float64,
                     intensity_dB::Float64, frequency::Float64 )
 
     error_msgs = ( "must be positive.", "must be greater than 0." )
     # 192dB is the maximum value possible in decibel for sound pressure level (dB S.P.L.) within Earth's atmosphere.
      # Also, it is worth mentioning that a value of `intensity_dB` greater than 392 would cause a Integer overflow for the computation of `max_radius`.
       # Integer overflow is achived for Int64 powers of 10, when 10^x > 2^63, so for x > 18, which would result, in the computations below, for `intensity_dB > 392`.
-    ( intensity_dB <= 0 || intensity_dB => 192 ) && throw(DomainError(intensity_dB, "Sound intensity value outside of valid range."))
+    ( intensity_dB <= 0 || intensity_dB >= 192 ) && throw(DomainError(intensity_dB, "Sound intensity value outside of valid range."))
     relative_humidity <= 0 && throw(DomainError(relative_humidity, "`relative_humidity` "*error_msgs[1]))
     frequency <= 0 && throw(DomainError(frequency, "`frequency` "*error_msgs[2]))
 
@@ -1043,7 +1043,7 @@ function run_noise( output_path::String, dem_file::String, terrain_impedences_fi
                     # Resulting sound intensity on the cell
                     intensity = intensity_dB - +(
                         max( transmission_loss(dists[j]), 0 ),
-                        max( atmospheric_absorption_loss(dists[j], heights[j], relative_humidity, temperature_K, frequency), 0 ),
+                        max( atmospheric_absorption_loss(dists[j], heights[j], relative_humidity, temperature, frequency), 0 ),
                         gl < 0.0 || isnan(gl) ? 0.0 : gl
                     )
                     if intensity >= 0

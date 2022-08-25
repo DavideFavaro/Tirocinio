@@ -27,6 +27,13 @@ const agd = ArchGDAL
     96-18-4      1,2,3-Tricloropropano    liquido("l")      0.004            8.571e-5             0.0003
 =#
 function main()
+    
+    println("Julia Envirnmental Analysys\n")
+    println("The program can run in eihter `auto` or `manual` mode\n")
+    println("\t`auto`: the user will be able to choose wich analysis he wishes executed but the analysys itself will use preselected data. It's still possible to specify a directory for the output.\n")
+    println("\t`manual`: the user will be able to choose the analysis and will be required to specify all the required parameters.\n")
+    println("Choose mode:\n")
+    isauto = lowercase(readline()) == "auto"
 
     path = pwd()
     src = path*"\\resources\\Analysis data\\source_shapefile\\source_32.shp"
@@ -222,7 +229,21 @@ Pluto.run()
 #==================================================================================================================#
 
 
+using DataFrames
+using DBInterface
+using SQLite
+const sql = SQLite
+const dbi = DBInterface
+db_path = occursin("src", @__DIR__) ? split(@__DIR__, "src")[1] : *(@__DIR__, "\\..\\")
+db_path *= "resources\\Analysis data\\substance.db"
+db = sql.DB(db_path)
+query = sql.Stmt( db, "SELECT * FROM texture" )
+results = dbi.execute(query)
+resdf = DataFrame(results)
 
+query2 = sql.Stmt(db, "SELECT rfd_ing, rfd_inal, rfc FROM substance WHERE n_CAS LIKE ?")
+result2 = dbi.execute(query2, ["16065-83-1"])
+resdf2 = DataFrame(result2)
 
 
 
@@ -262,13 +283,12 @@ area = "D:\\Roba del tirocinio\\Risultati Envifate\\Confini\\area.shp"
 trg = "D:\\Roba del tirocinio\\Risultati Envifate\\Confini\\target.shp"
 out = "D:\\Roba del tirocinio\\Risultati Envifate\\Julia rasters\\test_lake_trg.tiff"
 lks.run_lake(
-    dtm, src, area,
-    trg,
+    out, dtm, src, area,
+    # trg,
     2000.0, 0, 0.03, 10.0,
-    #   tolerance = 2,
+    tolerance = 2,
     fickian_x = 4.0,
     fickian_y = 3.0,
-    output_path = out
 )
 
 
@@ -282,14 +302,13 @@ dtm = "C:\\Users\\Lenovo\\Documents\\GitHub\\Tirocinio\\resources\\Analysis data
 trg = "D:\\Roba del tirocinio\\Risultati Envifate\\Confini\\target.shp"
 out = "D:\\Roba del tirocinio\\Risultati Envifate\\Julia rasters\\test_plume_tol.tiff"
 plm.run_plume(
-    dtm, src,
+    out, dtm, src,
     #   trg,
     "a", "c", 10000.0, 0, 0.1, 80.0, 1.0,
     tolerance = 2,
     gas_velocity = 0.1,
     gas_temperature = 150.0,
-    temperature = 18.0,
-    output_path = out
+    temperature = 18.0
 )
 
 
@@ -303,11 +322,10 @@ dtm = "C:\\Users\\Lenovo\\Documents\\GitHub\\Tirocinio\\resources\\Analysis data
 trg = "D:\\Roba del tirocinio\\Risultati Envifate\\Confini\\target.shp"
 out = "D:\\Roba del tirocinio\\Risultati Envifate\\Julia rasters\\test_sediment_trg.tiff"
 sdm.run_sediment(
-	dtm, src,
-    trg,
+	out, dtm, src,
+    # trg,
 	0.03, 13.0, 1.0, 10.0, 4.0, 0, 0.0359, 1000, 10,
-    #   tolerance = 2,
-	output_path = out
+    tolerance = 2
 )
 
 
@@ -320,16 +338,10 @@ const noise = Noises
 src = "C:\\Users\\Lenovo\\Documents\\GitHub\\Tirocinio\\resources\\Analysis data\\source_shapefile\\source_32.shp"
 impd = "C:\\Users\\Lenovo\\Documents\\GitHub\\Tirocinio\\resources\\Analysis data\\impedances.tiff"
 dtm = "C:\\Users\\Lenovo\\Documents\\GitHub\\Tirocinio\\resources\\Analysis data\\DTM_32.tiff"
-out = "C:\\Users\\Lenovo\\Desktop\\D\\Risultati Envifate\\Julia Rasters\\test_noise_9.tiff"
+out = "C:\\Users\\Lenovo\\Desktop\\D\\Risultati Envifate\\Julia Rasters\\test_noise.tiff"
 noise.run_noise(
-    dem_file = dtm,
-    terrain_impedences_file = impd,
-    source_file = src,
-    temperature_K = 293.15,
-    relative_humidity = 0.2,
-    intensity_dB = 110.0,
-    frequency = 1000.0,
-    output_path = out
+    out, dtm, impd, src,
+    20.0, 0.2, 110.0, 400.0
 )
 
 
@@ -343,7 +355,7 @@ dtm = "C:\\Users\\Lenovo\\Documents\\GitHub\\Tirocinio\\resources\\Analysis data
 river = "C:\\Users\\Lenovo\\Desktop\\D\\Risultati Envifate\\Confini\\line\\linea.shp"
 out = "C:\\Users\\Lenovo\\Desktop\\D\\Risultati Envifate\\Julia Rasters\\Test tempi\\river"
 rvr.run_river(
-    dtm, src, river, out,
+    out, dtm, src, river,
     0, 10, 60, 2000.0, 0.1,
     fickian_x = 15.0,
     hydraulic_section = 1.0,

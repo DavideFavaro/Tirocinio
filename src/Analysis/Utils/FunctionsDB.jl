@@ -117,35 +117,3 @@ end
 
 
 end # module
-
-
-#=Tables
-"family":
-    Chemical family of substances, referenced by table "substance"
-"volatility":
-    Classes of volatility, referenced by table "substance"
-"substance":
-    Chemical substances, with various information on each
-"air_stability":
-    Stability classes, outdoor classes, various sigma values 
-"sqlite_sequence":
-    Not relevant
-"texture":
-    Kind of terrain textures, with informations on them like permeability and such
-"sqlite_stat1"
-    Not relevant
-"cn":
-    Related to runoff (cn -> runoff curve number), also has clc (-> CORINE Land Cover ?)
-=#
-#= CHECK A TABLE TO FIND THE VALUE TO BE USED FOR THE CONDITION
-db_path = occursin("src", @__DIR__) ? split(@__DIR__, "src")[1] : *(@__DIR__, "\\..\\")
-db_path *= "resources\\Analysis data\\substance.db"
-db = sql.DB(db_path)
-query = sql.Stmt( db, "SELECT * FROM substance" )
-results = dbi.execute(query)
-resdf = DataFrame(results)
-
-query2 = sql.Stmt(db, "SELECT rfd_ing, rfd_inal, rfc FROM substance WHERE n_CAS LIKE ?")
-result2 = dbi.execute(query2, ["16065-83-1"])
-resdf2 = DataFrame(result2)
-=#
