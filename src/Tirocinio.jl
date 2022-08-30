@@ -2,8 +2,7 @@ module Tirocinio
 
 
 
-using Revise
-using ArchGDAL
+using Gtk
 
 
 include(".\\Analysis\\Aquifers.jl")
@@ -18,6 +17,194 @@ const agd = ArchGDAL
 
 
 
+function make_labeled_field( label::String, field::Gtk.GtkWidget )
+    return push!( GtkBox(:h), GtkLabel(label), field )
+end
+
+function create_input_window_tol!( title::String, window::Base.RefValue{GtkWindowLeaf}, input::Vector{Union{String, Int64, Float64}} )
+    inwin = GtkWindow(title, 600, 500)
+    winbox = GtkBox(:v)
+    # The number of inputs will depend on the analysis type, so we save them in an array
+    fields_box = GtkBox(:v)
+    # Among the inputs there will always be: the output file, terrain raster file and the source vector file.
+    push!(fields_box,
+        make_labeled_field( "Output file", GtkEntry() ),
+        make_labeled_field( "Elevation raster file", GtkEntry() ),
+        make_labeled_field( "Source vector file", GtkEntry() )
+    )
+    if title == "Aquifers"
+        cb = GtkComboBoxText()
+        for str in ["sand", "loamy sand", "sandy loam", "sandy clay loam", "loam", "silt loam", "clay loam", "silty clay loam", "silty clay", "silt", "sandy clay", "clay"]
+            push!(cb, str)
+        end
+        push!(fields_box,
+            make_labeled_field( "Aquifer area file",      GtkEntry() ), # aquifer_area_file::String
+            make_labeled_field( "Contaminant CAS number", GtkEntry() ), # contaminantCASNum::String
+            make_labeled_field( "Concentration",          GtkSpinButton(1.0:2.0^62, digits=2) ), # concentration::Float64
+            make_labeled_field( "Aquifer depth",          GtkSpinButton(1.0:2.0^62, digits=2) ), # aquifer_depth::Float64
+            make_labeled_field( "Flow direction",         GtkSpinButton(0:360) ), # aquifer_flow_direction::Int64
+            make_labeled_field( "Mean rainfall",          GtkSpinButton(0.0:2.0^62, digits=2) ), # mean_rainfall::Float64
+            make_labeled_field( "Terrain texture",        cb ), # texture::String
+            make_labeled_field( "Tollerance value",       GtkScale(true, 1:4) ), # tolerance::Int64 = 2
+            make_labeled_field( "Time",                   GtkSpinButton(1:2^62) ), # time::Int64=1
+            make_labeled_field( "Orthogonal width",       GtkSpinButton(1.0:2.0^62, digits=2, value=10000.0 ) ), # orthogonal_width::Float64 = 10000.0
+            make_labeled_field( "Soil density",           GtkSpinButton(0.0:2.0^62, climb_rate=0.05, digits=3, value=1.70 ) ), # soil_density::Float64 = 1.70
+            make_labeled_field( "Source thickness",       GtkSpinButton(0.0:2.0^62, climb_rate=0.05, digits=3, value=1.0 ) ), # source_thickness::Float64 = 1.0
+            make_labeled_field( "Darcy velocity",         GtkSpinButton(0.0:2.0^62, climb_rate=0.01, digits=7, value=0.000025 ) ), # darcy_velocity::Float64 = 0.000025
+            make_labeled_field( "Mixing zone depth",      GtkSpinButton(0.0:2.0^62, climb_rate=0.01, digits=3, value=1.0 ) ), # mixing_zone_depth::Float64 = 1.0
+            make_labeled_field( "Decay coefficient",      GtkSpinButton(0.0:2.0^62, climb_rate=0.01, digits=3, value=0.0 ) ), # decay_coeff::Float64=0.0
+            make_labeled_field( "Analysis alorithm",      GtkRadioButtonGroup(["fickian", "domenico"], 1) ), # algorithm::Symbol=:fickian 
+            make_labeled_field( "Analysis mode",          GtkRadioButtonGroup(["continuous", "pulse"], 1) )  # option::Symbol=:continuous
+        )
+    elseif title == "Lakes"
+    elseif title == "Noises"
+    elseif title == "Plumes"
+        push!(fields_box, 
+            Gtk.RadioButtonGroup(["a", "b", "c", "d", "e", "f"], 1), # stability::String
+            Gtk.RadioButtonGroup(["c", "u"], 1), # outdoor::String
+        #=
+            , # concentration::Float64
+            , # tolerance::Int64=2`: value u
+            , #  Specifically, a concentrati
+            , # resolution::Int64`: size of 
+            , # wind_direction::Int64`: angl
+            , # wind_speed::Float64`: averag
+            , # stack_height::Float64 `: hei
+            , # stack_diameter::Float64=0.0`
+            , # gas_velocity::Float64=0.0`: 
+            , # gas_temperature::Float64=0.0
+            , # temperature::Float64=0.0`: a
+            , # output_path::String=".\\plum
+        =#)
+    else
+    end
+    b_send = GtkButton("Submit")
+    signal_connect(
+        (w) -> begin
+            for box in fields_box
+                if box[2] isa GtkScale
+                    push!( input, get_gtk_property( Gtk.Adjustment(box[2]), :value, Int64 ) )
+                elseif box[2] isa GtkSpinButton
+                    push!( input, get_gtk_property( box[2], :value, Float64 ) )
+                elseif box[2] isa GtkEntry
+                    push!( input, get_gtk_property( box[2], :text, String ) )
+                elseif box[2] isa GtkBoxLeaf
+                    for b in box[2]
+                        if get_gtk_property(b, :active, Bool)
+                            push!( input, get_gtk_property( b, :label, String ) )
+                            break
+                        end
+                    end
+                elseif box[2] isa GtkComboBoxText
+                    str = Gtk.bytestring( GAccessor.active_text(box[2]) )
+                    push!(input, str)
+                else
+                    println("\n\n\nERRORE IN $(box)\n\n\n")
+                end
+            end
+            Gtk.visible(window[], true)
+            Gtk.destroy(inwin)
+        end,
+        b_send,
+        "clicked"
+    )
+    push!(winbox, fields_box, b_send)
+    push!(inwin, winbox)
+    showall(inwin)
+end
+
+function create_input_window_trg!( title::String, window::Base.RefValue{GtkWindowLeaf}, input::Vector{Union{String, Int64, Float64}} )
+    inwin = GtkWindow(title, 600, 500)
+    winbox = GtkBox(:v)
+    # The number of inputs will depend on the analysis type, so we save them in an array
+    fields_box = GtkBox(:v)
+    # Among the inputs there will always be: the output file, terrain raster file and the source vector file.
+    push!(fields_box,
+        make_labeled_field( "Output file", GtkEntry() ),
+        make_labeled_field( "Elevation raster file", GtkEntry() ),
+        make_labeled_field( "Source vector file", GtkEntry() )
+    )
+    if title == "Aquifers"
+        cb = GtkComboBoxText()
+        for str in ["sand", "loamy sand", "sandy loam", "sandy clay loam", "loam", "silt loam", "clay loam", "silty clay loam", "silty clay", "silt", "sandy clay", "clay"]
+            push!(cb, str)
+        end
+        push!(fields_box,
+            make_labeled_field( "Aquifer area file",      GtkEntry() ), # aquifer_area_file::String
+            make_labeled_field( "Target area file",       GtkEntry() ), # target_area_file::String
+            make_labeled_field( "Contaminant CAS number", GtkEntry() ), # contaminantCASNum::String
+            make_labeled_field( "Concentration",          GtkSpinButton(1.0:2.0^62, digits=2) ), # concentration::Float64
+            make_labeled_field( "Aquifer depth",          GtkSpinButton(1.0:2.0^62, digits=2) ), # aquifer_depth::Float64
+            make_labeled_field( "Flow direction",         GtkSpinButton(0:360) ), # aquifer_flow_direction::Int64
+            make_labeled_field( "Mean rainfall",          GtkSpinButton(0.0:2.0^62, digits=2) ), # mean_rainfall::Float64
+            make_labeled_field( "Terrain texture",        cb ), # texture::String
+            make_labeled_field( "Time",                   GtkSpinButton(1:2^62) ), # time::Int64=1
+            make_labeled_field( "Orthogonal width",       GtkSpinButton(1.0:2.0^62, digits=2, value=10000.0 ) ), # orthogonal_width::Float64 = 10000.0
+            make_labeled_field( "Soil density",           GtkSpinButton(0.0:2.0^62, climb_rate=0.05, digits=3, value=1.70 ) ), # soil_density::Float64 = 1.70
+            make_labeled_field( "Source thickness",       GtkSpinButton(0.0:2.0^62, climb_rate=0.05, digits=3, value=1.0 ) ), # source_thickness::Float64 = 1.0
+            make_labeled_field( "Darcy velocity",         GtkSpinButton(0.0:2.0^62, climb_rate=0.01, digits=7, value=0.000025 ) ), # darcy_velocity::Float64 = 0.000025
+            make_labeled_field( "Mixing zone depth",      GtkSpinButton(0.0:2.0^62, climb_rate=0.01, digits=3, value=1.0 ) ), # mixing_zone_depth::Float64 = 1.0
+            make_labeled_field( "Decay coefficient",      GtkSpinButton(0.0:2.0^62, climb_rate=0.01, digits=3, value=0.0 ) ), # decay_coeff::Float64=0.0
+            make_labeled_field( "Analysis alorithm",      GtkRadioButtonGroup(["fickian", "domenico"], 1) ), # algorithm::Symbol=:fickian 
+            make_labeled_field( "Analysis mode",          GtkRadioButtonGroup(["continuous", "pulse"], 1) )  # option::Symbol=:continuous
+        )
+    elseif title == "Lakes"
+    elseif title == "Noises"
+    elseif title == "Plumes"
+        push!(fields_box, 
+            Gtk.RadioButtonGroup(["a", "b", "c", "d", "e", "f"], 1), # stability::String
+            Gtk.RadioButtonGroup(["c", "u"], 1), # outdoor::String
+        #=
+            , # concentration::Float64
+            , # tolerance::Int64=2`: value u
+            , #  Specifically, a concentrati
+            , # resolution::Int64`: size of 
+            , # wind_direction::Int64`: angl
+            , # wind_speed::Float64`: averag
+            , # stack_height::Float64 `: hei
+            , # stack_diameter::Float64=0.0`
+            , # gas_velocity::Float64=0.0`: 
+            , # gas_temperature::Float64=0.0
+            , # temperature::Float64=0.0`: a
+            , # output_path::String=".\\plum
+        =#)
+    else
+    end
+    b_send = GtkButton("Submit")
+    signal_connect(
+        (w) -> begin
+            for box in fields_box
+                if box[2] isa GtkScale
+                    push!( input, get_gtk_property( box[2], :value, Int64 ) )
+                elseif box[2] isa GtkSpinButton
+                    push!( input, get_gtk_property( box[2], :value, Float64 ) )
+                elseif box[2] isa GtkEntry
+                    push!( input, get_gtk_property( box[2], :text, String ) )
+                elseif box[2] isa GtkBoxLeaf
+                    for b in box[2]
+                        if get_gtk_property(b, :active, Bool)
+                            push!( input, get_gtk_property( b, :label, String ) )
+                            break
+                        end
+                    end
+                elseif box[2] isa GtkComboBoxText
+                    str = Gtk.bytestring( GAccessor.active_text(box[2]) )
+                    push!(input, str)
+                else
+                    println("\n\n\nERRORE IN $(box)\n\n\n")
+                end
+            end
+            Gtk.visible(window[], true)
+            Gtk.destroy(inwin)
+        end,
+        b_send,
+        "clicked"
+    )
+    push!(winbox, fields_box, b_send)
+    push!(inwin, winbox)
+    showall(inwin)
+end
+
 #= SOSTANZE 
     NCAS         NOME                     STATO             RFD_ING          RFD_INAL             RFC
     75-01-4      Cloruro di vinile        gas("g")          0.003            0.0285714            0.1
@@ -26,165 +213,205 @@ const agd = ArchGDAL
     71-43-2      Benzene                  liquido("l")      0.004            0.00857143           0.03
     96-18-4      1,2,3-Tricloropropano    liquido("l")      0.004            8.571e-5             0.0003
 =#
+
+
+#=
+        C:\Users\Lenovo\Desktop\D\Risultati Envifate\Julia rasters\aquifer_gui.tiff
+        C:\Users\Lenovo\Documents\GitHub\Tirocinio\resources\Analysis data\DTM_32.tiff
+        C:\Users\Lenovo\Documents\GitHub\Tirocinio\resources\Analysis data\source_shapefile\source_32.shp
+        C:\Users\Lenovo\Documents\GitHub\Tirocinio\resources\Analysis data\area\area.shp
+        C:\Users\Lenovo\Documents\GitHub\Tirocinio\resources\Analysis data\target\target.shp
+=#
+#=
+        108-88-3, 100.0, 1000.0,
+        0, 20.0, "sand",
+        tolerance = 2,
+    	time = 10,
+    	orthogonal_width = 10.0,
+    	mixing_zone_depth = 1580.0,
+    	algorithm = :domenico
+=#
 function main()
+
+    window = GtkWindow("Analysis selection", 600, 500)
+    box = GtkBox(:v)
+
+    rbg_analysi = Gtk.RadioButtonGroup(["Aquifers", "Lakes", "Noises", "Plumes", "Sediments"], 1)
+    push!(box, rbg_analysi)
     
-    println("Julia Envirnmental Analysys\n")
-    println("The program can run in eihter `auto` or `manual` mode\n")
-    println("\t`auto`: the user will be able to choose wich analysis he wishes executed but the analysys itself will use preselected data. It's still possible to specify a directory for the output.\n")
-    println("\t`manual`: the user will be able to choose the analysis and will be required to specify all the required parameters.\n")
-    println("Choose mode:\n")
-    isauto = lowercase(readline()) == "auto"
+    rbg_type = Gtk.RadioButtonGroup(["Tolerance threshold", "Target area"], 1)
+    push!(box, rbg_type)
+    
+    input = Union{String, Int64, Float64}[]
+    analysis = Ref("")
 
-    path = pwd()
-    src = path*"\\resources\\Analysis data\\source_shapefile\\source_32.shp"
-    dtm = path*"\\resources\\Analysis data\\DTM_32.tiff"
-    area = path*"\\resources\\Analysis data\\area\\area.shp"
-    trg = path*"\\resources\\Analysis data\\target\\target.shp"
-    out = "C:\\Users\\Lenovo\\Desktop\\D\\Risultati Envifate\\Julia Rasters\\test_" .* deleteat!([ x != "noise" ? x * "_" * y : x
-                                                                                                for x in ["aquifer", "lake", "noise", "plume", "sediment"]
-                                                                                                    for y in ["tol", "trg"] ], 6) .* ".tiff"
-    types = ["all", "aquifer", "lake", "noise", "plume", "sediment"]
+    b_acpt = GtkButton("Submit")
+    istol = Ref(true)
+    signal_connect(
+        (w) -> begin
+            for rb in rbg_analysi
+                if get_gtk_property(rb, :active, Bool)
+                    analysis[] = get_gtk_property(rb, :label, String)
+                    break
+                end
+            end
+            # For some reason when using `collect` the radio buttons of the group are inverted.
+            istol[] = get_gtk_property(collect(rbg_type)[2], :active, Bool)
+            if istol[]
+                create_input_window_tol!( analysis[], Ref(window), input )
+            else
+                create_input_window_trg!( analysis[], Ref(window), input )
+            end
+            Gtk.visible(window, false)
+        end,
+        b_acpt,
+        "clicked"
+    )
+    push!(box, b_acpt)
+    push!(window, box)
+    showall(window)
 
-    println("Choose an analysis type: ")
-    type = lowercase(readline())
-    type ∉ types && throw(DomainError(type, "Unrecognized input.\nValid inputs are: all, aquifer, lake, noise, plume and sediment."))
-    println("Choose analysis' target area [f(free)/c(constrained)]: ")
-    precision = lowercase(readline())
-    precision ∉ ["f", "c"] && throw(DomainError(precision, "Unrecognized input."))
-
-
-    if type == types[1] || type == types[2]
-        #   71-43-2   Benzene   liquido   rdf_ing:0.004   rdf_inal:0.00857143   rfc:0.03
-        #=
-            contaminante: Tetracloroetilene (PCE)
-            concentrazione: 100
-            profondità: 1000
-            direzione flusso: non si vede
-            pioggia: non si vede
-            tessitura: sand
-            tempo: non si vede
-            estensione: 10
-            densità: non messo
-            spessore: non messo
-            darcy: 0.000025
-            profondità mixed: 1580
-            indice 1° decadimento: non messo
-            metodo: Domenico/Schwartz
-        =#
-        println("Esecuzione analisi falde aquifere")
-        if type == "f"
-            println("\tAnalisi libera")
+    if analysis[] == "Aquifers"
+        if istol[]
             Aquifers.run_aquifer(
-                out[1], dtm, src, area,
-                "108-88-3", 100.0,
-            	1000.0, 0, 20.0, "sand",
-                tolerance = 2,
-            	time = 10,
-            	orthogonal_width = 10.0,
-            	mixing_zone_depth = 1580.0,
-            	algorithm = :domenico
+                input[1:7]...,
+                convert(Int64, input[8]),
+                input[9:10]...,
+                tolerance = input[11],
+                time = convert(Int64, input[12]),
+                orthogonal_width = input[13],
+                soil_density = input[14],
+                source_thickness = input[15],
+                darcy_velocity = input[16],
+                mixing_zone_depth = input[17],
+                decay_coeff = input[18],
+                algorithm = Symbol(input[19]),
+                option = Symbol(input[20])
             )
         else
-            println("\tAnalisi localizzata")
             Aquifers.run_aquifer(
-                out[2], dtm, src, area, trg,
-                "108-88-3", 100.0,
-            	1000.0, 0, 20.0, "sand",
-            	time = 10,
-            	orthogonal_width = 10.0,
-            	mixing_zone_depth = 1580.0,
-            	algorithm = :domenico
+                input[1:8]...,
+                convert(Int64, input[9]),
+                input[10:11]...,
+                time = convert(Int64, input[12]),
+                orthogonal_width = input[13],
+                soil_density = input[14],
+                source_thickness = input[15],
+                darcy_velocity = input[16],
+                mixing_zone_depth = input[17],
+                decay_coeff = input[18],
+                algorithm = Symbol(input[19]),
+                option = Symbol(input[20])
             )
         end
-    end
-    if type == types[1] || type == types[3]
         #=
-            direzione corrente: E (0?)
-            concentrazione: 2000
-            velocità corrente: 0.03
-            tempo: 10
-            coeff. fickian x: 4
-            coeff. fickian y: 3
-            coeff. lambda: non messo
+            output_path, dem_file, source_file, aquifer_area_file, contaminantCASNum, concentration,
+            aquifer_depth, aquifer_flow_direction, mean_rainfall, texture;
+
+            tolerance, time, orthogonal_width, soil_density,
+            source_thickness, darcy_velocity, mixing_zone_depth, decay_coeff,
+            algorithm, option
         =#
-        println("Esecuzione analisi laghi")
-        if type == "f"
-            println("\tAnalisi libera")
+    elseif analysis[] == "Lakes"
+        if istol[]
             Lakes.run_lake(
-                out[3], dtm, src, area,
-                2000.0, 0, 0.03, 10.0,
-                tolerance = 2,
-                fickian_x = 4.0,
-                fickian_y = 3.0
+                input[1:5]...,
+                convert(Int64, input[6]),
+                input[7],
+                convert(Int64, input[8]),
+                tolerance = input[9],
+                fickian_x = input[10],
+                fickian_y = input[11],
+                λk = input[12]
             )
         else
-            println("\tAnalisi localizzata")
             Lakes.run_lake(
-                out[4], dtm, src, area, trg,
-                2000.0, 0, 0.03, 10.0,
-                fickian_x = 4.0,
-                fickian_y = 3.0
+                input[1:6]...,
+                convert(Int64, input[7]),
+                input[8],
+                convert(Int64, input[9]),
+                fickian_x = input[10],
+                fickian_y = input[11],
+                λk = input[12]
             )
         end
-    end
-    if type == types[1] || type == types[4]
-        println("Esecuzione analisi rumore.")
-        Noises.run_noise(
-            out[5], dtm, src,
-            293.15, 0.2, 110.0, 400.0
-        )
-    end
-    if type == types[1] || type == types[5]
         #=
-            stabilità: a
-            outdoor: country (c?)
-            concentrazione: 10000
-            wind_dir: E (niente vento? Est? Est == 0?)
-            velocità vento: 1
-            h stack: 80
-            velocità gas:0.1
-            diametro: 1
-            temperatura gas: 150
-            temperatura: 18
+            output_path, dem_file, source_file, lake_area_file,
+            contaminant_mass, wind_direction, mean_flow_speed, hours;
+            tolerance, fickian_x, fickian_y, λk
         =#
-        println("Esecuzione analisi fumi.")
-        if type == "f"
-            println("\tAnalisi libera.\n")
+    elseif analysis[] == "Noises"
+        Noises.run_noise(input[1:end]...)
+        #=
+            output_path, dem_file, terrain_impedences_file, source_file,
+            temperature, relative_humidity, intensity_dB, frequency
+        =#
+    elseif analysis[] == "Plumes"
+        if istol[]
             Plumes.run_plume(
-                out[6], dtm, src,
-                "a", "c", 10000.0, 0, 0.1, 80.0, 1.0,
-                tolerance = 2,
-                gas_velocity = 0.1,
-                gas_temperature = 150.0,
-                temperature = 18.0
+                input[1:6]...,
+                convert(Int64, input[7]),
+                input[8:10]...,
+                tolerance = input[11],
+                gas_velocity = input[12],
+                gas_temperature = input[13],
+                temperature = input[14]
             )
         else
             Plumes.run_plume(
-                out[7], dtm, src, trg,
-                "a", "c", 10000.0, 0, 0.1, 80.0, 1.0,
-                gas_velocity = 0.1,
-                gas_temperature = 150.0,
-                temperature = 18.0
+                input[1:7]...,
+                convert(Int64, input[8]),
+                input[9:11]...,
+                gas_velocity = input[12],
+                gas_temperature = input[13],
+                temperature = input[14]
             )
         end
-    end
-    if type == types[1] || type == types[6]
-        println("Esecuzione analisi sedimentazione.")
-        if type == "f"
-            println("\tAnalisi libera.\n")
-            Sediments.run_sediment(
-            	out[8], dtm, src,
-            	0.03, 13.0, 1.0, 10.0, 4.0, 0, 0.0359, 1000, 10,
-                tolerance = 2
+        #=
+            output_path, dem_file, source_file,
+            stability, outdoor, concentration,
+            wind_direction, wind_speed, stack_height,
+            stack_diameter;
+            tolerance, gas_velocity, gas_temperature,
+            temperature
+        =#
+    elseif analysis[] == "Sediments"
+        if istol[]
+            Sediments.run_sediments(
+                input[1:8]...,
+                convert(Int64, input[9]),
+                input[10],
+                convert(Int64, input[11]),
+                convert(Int64, input[12]),
+                tolerance = input[13],
+                current_oscillatory_amplitude = input[14],
+                tide = convert(Int64, input[15])
             )
         else
-            Sediments.run_sediment(
-            	out[9], dtm, src, trg,
-            	0.03, 13.0, 1.0, 10.0, 4.0, 0, 0.0359, 1000, 10
+            Sediments.run_sediments(
+                input[1:9]...,
+                convert(Int64, input[10]),
+                input[11],
+                convert(Int64, input[12]),
+                convert(Int64, input[13]),
+                current_oscillatory_amplitude = input[14],
+                tide = convert(Int64, input[15])
             )
         end
+        #=
+            output_path, dem_file, source_file,
+            mean_flow_speed, mean_depth, x_dispersion_coeff,
+            y_dispersion_coeff, dredged_mass, flow_direction,
+            mean_sedimentation_velocity, time, time_intreval;
+            tolerance, current_oscillatory_amplitude, tide
+        =#
+    else
+        throw(DomainError("Error during analysis choice"))
     end
 end
+
+
+
 main()
 
 
