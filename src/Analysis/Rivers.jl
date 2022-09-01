@@ -212,7 +212,7 @@ end
 
 =#
 # points_output_path::String, lines_output_path::String,
-function run_river( dem_file::String, source_file::String, river_file::String, output_directory_path::String, start_time::Int64, time_interval::Int64,
+function run_river( output_directory_path::String, dem_file::String, source_file::String, river_file::String, start_time::Int64, time_interval::Int64,
                     end_time::Int64, concentration::Float64, mean_hydraulic_radius::Float64; slope_file::String="", resolution::Float64 = 25.0, fickian_x::Float64=0.05,
                     hydraulic_section::Float64=1.0, decay_coeff::Float64=0.0, manning_coeff::Float64=0.05 )
  

@@ -967,15 +967,15 @@ Run the simulation of diffusion of a sound, returning a raster map of the possib
 # Arguments
 - `output_path::String`: output file path.
 - `dem_file::String`: path to the raster containing the height of the terrain in each cell.
-- `terrain_impedence_file::String`: path to the raster containing the terrain impedences.
 - `source_file::String`: path to the shapefile containing the source point of the noise.
+- `terrain_impedence_file::String`: path to the raster containing the terrain impedences.
 - `temperature::Float64`: outside mean temperature in Celsius degrees. 
 - `relative_humidity::Float64`: relative humidity.
 - `intensity_dB::Float64`: sound intenisty in decibel.
 - `frequency::Float64`: frequency of the sound in hertz.
 
 """
-function run_noise( output_path::String, dem_file::String, terrain_impedences_file::String, source_file::String, temperature::Float64, relative_humidity::Float64,
+function run_noise( output_path::String, dem_file::String, source_file::String, terrain_impedences_file::String, temperature::Float64, relative_humidity::Float64,
                     intensity_dB::Float64, frequency::Float64 )
 
     error_msgs = ( "must be positive.", "must be greater than 0." )

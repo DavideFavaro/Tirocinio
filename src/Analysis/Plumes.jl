@@ -119,14 +119,13 @@ If `target_area_file` is specified, the function analysis will be limited to the
     Must be a letter between: `\"a\"` (great instability), `\"b\"` (moderate instability), `\"c\"` (slight instability), `\"d\"` (neutral), `\"e\"` (slight stablility) and `\"f\"` (moderate stablility)
 - `outdoor::String`: type of environment, either `\"c\"` (country) or `\"u\"` (urban).
 - `concentration::Float64`: rate of chemical emission.
-- `tolerance::Int64=2`: value used to determine wether the concentration of pollutant in a cell is relevant.\n
-    Specifically, a concentration value is considered relevant if its value is within "tolerance" orders of magnitute from the maximum concentration found in the analysis
-    (ignoring the source).\n
-- `resolution::Int64`: size of the cell in meters.
 - `wind_direction::Int64`: angle of main direction of the wind in degrees.
 - `wind_speed::Float64`: average wind speed in the main direction.
 - `stack_height::Float64 `: height of the stack, or height of the source of the plume.
-- `stack_diameter::Float64=0.0`: diameter of the stack emiting the plume.
+- `stack_diameter::Float64`: diameter of the stack emiting the plume.
+- `tolerance::Int64=2`: value used to determine wether the concentration of pollutant in a cell is relevant.\n
+    Specifically, a concentration value is considered relevant if its value is within "tolerance" orders of magnitute from the maximum concentration found in the analysis
+    (ignoring the source).\n
 - `gas_velocity::Float64=0.0`: gas velocity.
 - `gas_temperature::Float64=0.0`: absolute temperature of the gas.
 - `temperature::Float64=0.0`: absolute ambient air temperature.
@@ -144,7 +143,7 @@ function run_plume( output_path::String, dem_file::String, source_file::String, 
     stack_height <= 0 && throw(DomainError(stack_height, "`stack_height` "*error_msgs[2]))
     stack_diameter <= 0 && throw(DomainError(stack_diameter, "`stack_diameter` "*error_msgs[2]))
     (tolerance < 1 || tolerance > 4) && throw(DomainError(tolerance, "`tolerance` value must be between 1 and 4."))
-    gas_velocity <= 0 && throw(DomainError(gas_velocity, "`gas_velocity` "*error_msgs[2]))
+    gas_velocity < 0 && throw(DomainError(gas_velocity, "`gas_velocity` "*error_msgs[1]))
 
 
     src_geom, dem = Functions.check_and_return_spatial_data(source_file, dem_file)
@@ -176,7 +175,7 @@ function run_plume( output_path::String, dem_file::String, source_file::String, 
     wind_speed <= 0 && throw(DomainError(wind_speed, "`wind_speed` "*error_msgs[2]))
     stack_height <= 0 && throw(DomainError(stack_height, "`stack_height` "*error_msgs[2]))
     stack_diameter <= 0 && throw(DomainError(stack_diameter, "`stack_diameter` "*error_msgs[2]))
-    gas_velocity <= 0 && throw(DomainError(gas_velocity, "`gas_velocity` "*error_msgs[2]))
+    gas_velocity < 0 && throw(DomainError(gas_velocity, "`gas_velocity` "*error_msgs[1]))
 
     src_geom, trg_geom, dem = Functions.check_and_return_spatial_data(source_file, dem_file, target_area_file_path=target_area_file)
 

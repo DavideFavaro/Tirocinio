@@ -32,7 +32,7 @@ mutable struct Lake <: Functions.AbstractAnalysisObject
     velocity_x::Float64       # Mean velocity of river in the X direction.
     velocity_y::Float64       # Mean velocity of river in the Y direction.
     direction::Int64          # Direction fo the flow.
-    λk::Float64               # First order decadiment.
+    λk::Float64               # First order decay.
  # Computational results
     C::Float64                # Resulting concentration.
 
@@ -82,7 +82,7 @@ natural borders of the lake, given by `lake_area_file`, the result will contain 
 - `hours::Int64`: time span of the analysis in hours.
 - `fickian_x::Float64=0.05`: X direction Fickian transport coefficient.
 - `fickian_y::Float64=0.05`: Y direction Fickian transport coefficient.
-- `λk::::Float64=0.0`: First order decadiment.
+- `λk::::Float64=0.0`: First order decay.
 
 """
 function run_lake( output_path::String, dem_file::String, source_file::String, lake_area_file::String, contaminant_mass::Float64, wind_direction::Int64,
@@ -95,7 +95,7 @@ function run_lake( output_path::String, dem_file::String, source_file::String, l
     (tolerance < 1 || tolerance > 4) && throw(DomainError(tolerance, "`tolerance` value must be between 1 and 4."))
     fickian_x <= 0 && throw(DomainError(fickian_x, "`fickian_x` "*error_msgs[2]))
     fickian_y <= 0 && throw(DomainError(fickian_y, "`fickian_y` "*error_msgs[2]))
-    λk <= 0 && throw(DomainError(λk, "`λk` "*error_msgs[1]))
+    λk < 0 && throw(DomainError(λk, "`λk` "*error_msgs[1]))
 
     # Initialize spatial data, checking wether there is a target area to initialize or not.
     src_geom, lake_geom, dem = Functions.check_and_return_spatial_data(source_file, lake_area_file, dem_file)
@@ -126,10 +126,9 @@ function run_lake( output_path::String, dem_file::String, source_file::String, l
     contaminant_mass <= 0 && throw(DomainError(contaminant_mass, "`contaminant_mass` "*error_msgs[2]))
     mean_flow_speed <= 0 && throw(DomainError(mean_flow_speed, "`mean_flow_speed` "*error_msgs[2]))
     hours <= 0 && throw(DomainError(hours, "`hours` "*error_msgs[2]))
-    (tolerance < 1 || tolerance > 4) && throw(DomainError(tolerance, "`tolerance` value must be between 1 and 4"))
     fickian_x <= 0 && throw(DomainError(fickian_x, "`fickian_x` "*error_msgs[2]))
     fickian_y <= 0 && throw(DomainError(fickian_y, "`fickian_y` "*error_msgs[2]))
-    λk <= 0 && throw(DomainError(λk, "`λk` "*error_msgs[1]))
+    λk < 0 && throw(DomainError(λk, "`λk` "*error_msgs[1]))
 
     # Initialize spatial data, checking wether there is a target area to initialize or not.
     src_geom, lake_geom, trg_geom, dem = Functions.check_and_return_spatial_data(source_file, lake_area_file, target_area_file,  dem_file)
