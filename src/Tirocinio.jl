@@ -125,8 +125,33 @@ end
 
 
 function make_labeled_field( label::String, field::Gtk.GtkWidget )
-    return push!( GtkBox(:h), GtkLabel(label), field )
+    box = GtkBox(:h)
+    lbl = GtkLabel(label)
+    push!(box, lbl, field)
+
+    set_gtk_property!(box, :spacing, 10)
+    set_gtk_property!(box, :margin, 10)
+    set_gtk_property!(box, :margin_left, 20)
+
+    return box
 end
+
+#=
+function make_labeled_field( label::String, field::Gtk.GtkScale )
+    box = GtkBox(:h)
+    lbl = GtkLabel(label)
+    push!( box, lbl, field )
+    
+    set_gtk_property!(box, :margin_right, lbl, 10)
+
+    set_gtk_property!(box, :width_request, field, 20)
+
+    set_gtk_property!(box, :margin, 10)
+    set_gtk_property!(box, :margin_left, 20)
+
+    return box
+end
+=#
 
 
 
@@ -146,6 +171,7 @@ function add_fields!(title::String, istol::Bool, fields_box::Gtk.GtkBox )
         for str in ["sand", "loamy sand", "sandy loam", "sandy clay loam", "loam", "silt loam", "clay loam", "silty clay loam", "silty clay", "silt", "sandy clay", "clay"]
             push!(cb, str)
         end
+        set_gtk_property!(cb, :active, 0)
         push!(fields,
             make_labeled_field( "Aquifer area file",      GtkEntry() ),                                                            # aquifer_area_file::String
             make_labeled_field( "Contaminant CAS number", GtkEntry() ),                                                            # contaminantCASNum::String
@@ -229,33 +255,6 @@ end
 
 
 
-function read_input!( input::Vector{Union{String, Int64, Float64}}, fields_box::Gtk.GtkBox )
-    for box in fields_box
-        if box[2] isa GtkScale
-            push!( input, get_gtk_property( Gtk.Adjustment(box[2]), :value, Int64 ) )
-        elseif box[2] isa GtkSpinButton
-            push!( input, get_gtk_property( box[2], :value, Float64 ) )
-        elseif box[2] isa GtkEntry
-            push!( input, get_gtk_property( box[2], :text, String ) )
-        elseif box[2] isa GtkBoxLeaf
-            for b in box[2]
-                if get_gtk_property(b, :active, Bool)
-                    push!( input, get_gtk_property( b, :label, String ) )
-                    break
-                end
-            end
-        elseif box[2] isa GtkComboBoxText
-            str = Gtk.bytestring( GAccessor.active_text(box[2]) )
-            push!(input, str)
-        else
-            println("\n\n\nERRORE IN $(box)\n\n\n")
-        end
-    end
-    return nothing
-end
-
-
-
 function create_input_window!( title::String, istol::Bool, window::Base.RefValue{GtkWindowLeaf} )
     inwin = GtkWindow(title, 600, 500)
     winbox = GtkBox(:v)
@@ -267,29 +266,63 @@ function create_input_window!( title::String, istol::Bool, window::Base.RefValue
     b_send = GtkButton("Submit")
     signal_connect(
         (w) -> begin
+            # True if all fields have a value
+            proceed = true
             # Vector of fields' values
             input = Union{String, Int64, Float64}[]
             # Read values of the fields and insert them in `input`
-            read_input!(input, fields_box)
-            # Execute computation
-            run_analysis(title, istol, input)
-            # Return to function choice window
-            Gtk.visible(window[], true)
-            Gtk.destroy(inwin)
+            for box in fields_box
+                if box[2] isa GtkScale
+                    push!( input, get_gtk_property( Gtk.Adjustment(box[2]), :value, Int64 ) )
+                elseif box[2] isa GtkSpinButton
+                    push!( input, get_gtk_property( box[2], :value, Float64 ) )
+                elseif box[2] isa GtkEntry
+                    content = get_gtk_property( box[2], :text, String )
+                    if isempty(content)
+                        proceed = false
+                        error_dialog("All fields must be filled.")
+                        break
+                    else
+                        push!(input,  content)
+                    end
+                elseif box[2] isa GtkBoxLeaf
+                    for b in box[2]
+                        if get_gtk_property(b, :active, Bool)
+                            push!( input, get_gtk_property( b, :label, String ) )
+                            break
+                        end
+                    end
+                elseif box[2] isa GtkComboBoxText
+                    str = Gtk.bytestring( GAccessor.active_text(box[2]) )
+                    push!(input, str)
+                else
+                    println("\n\n\nERRORE IN $(box)\n\n\n")
+                end
+            end
+            if proceed
+                # Execute computation
+                run_analysis(title, istol, input)
+                # Return to function choice window
+                Gtk.visible(window[], true)
+                Gtk.destroy(inwin)
+            end
         end,
         b_send,
         "clicked"
     )
     push!(winbox, fields_box, b_send)
-    push!(inwin, winbox)
+
+    set_gtk_property!(winbox, :spacing, 10)
+    set_gtk_property!(winbox, :margin, 10)
+
+    push!( inwin, GtkScrolledWindow(winbox) )
     showall(inwin)
 end
 
 
 
 function main()
-
-    window = GtkWindow("Analysis selection", 600, 500)
+    window = GtkWindow("Analysis selection", 600, 300)
     box = GtkBox(:v)
 
     rbg_analysis = Gtk.RadioButtonGroup(["Aquifers", "Lakes", "Noises", "Plumes", "Sediments"], 1)
@@ -323,6 +356,11 @@ function main()
         "clicked"
     )
     push!(box, b_acpt)
+
+    set_gtk_property!(box, :spacing, 10)
+    set_gtk_property!(box, :margin, 10)
+    set_gtk_property!(box, :margin_left, 20)
+
     push!(window, box)
     showall(window)
     return nothing
