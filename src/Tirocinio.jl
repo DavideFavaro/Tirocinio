@@ -1,8 +1,5 @@
 module Tirocinio
-#=
-import Pluto
-Pluto.run()
-=#
+
 
 
 using Gtk
@@ -124,10 +121,10 @@ function run_analysis( analysis::String, istol::Bool, input::Vector{Union{String
 end
 
 
+
 function make_labeled_field( label::String, field::Gtk.GtkWidget )
     box = GtkBox(:h)
-    lbl = GtkLabel(label)
-    push!(box, lbl, field)
+    push!(box, GtkLabel(label), field)
 
     set_gtk_property!(box, :spacing, 10)
     set_gtk_property!(box, :margin, 10)
@@ -136,22 +133,19 @@ function make_labeled_field( label::String, field::Gtk.GtkWidget )
     return box
 end
 
-#=
 function make_labeled_field( label::String, field::Gtk.GtkScale )
     box = GtkBox(:h)
-    lbl = GtkLabel(label)
-    push!( box, lbl, field )
-    
-    set_gtk_property!(box, :margin_right, lbl, 10)
+    push!(box, GtkLabel(label), field)
 
-    set_gtk_property!(box, :width_request, field, 20)
+    set_gtk_property!(field, :expand, true)
 
+    set_gtk_property!(box, :spacing, 10)
     set_gtk_property!(box, :margin, 10)
     set_gtk_property!(box, :margin_left, 20)
 
+    println(box)
     return box
 end
-=#
 
 
 
@@ -246,7 +240,7 @@ function add_fields!(title::String, istol::Bool, fields_box::Gtk.GtkBox )
     end
     if title == "Aquifers" || title == "Lakes" || title == "Plumes" || title == "Sediments" 
         # If the user chose analysis with tollerance value add the field, otherwise add the target area field
-        istol ? insert!( fields, pos_tol, make_labeled_field( "Tollerance value", GtkScale(true, 1:4) ) ) :
+        istol ? insert!( fields, pos_tol, make_labeled_field( "Tollerance value", GtkScale(false, 1:4) ) ) :
             insert!( fields, pos_trg, make_labeled_field( "Target area file", GtkEntry() ) )
     end
     push!(fields_box, fields...)
