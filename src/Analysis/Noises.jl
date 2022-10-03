@@ -1018,7 +1018,7 @@ function run_noise( output_path::String, dem_file::String, source_file::String, 
         Tuple{Int64, Int64}[ (row, col_end) for row in row_begin+1:r0 ]
     )
     # Matrix with the resulting intenisty levels on the area of interest
-    intensity_matrix = Float32[ noData for i in 1:(row_end - row_begin + 1), j in 1:(col_end - col_begin + 1) ]
+    intensity_matrix = Float32[ noData for _ in 1:(row_end - row_begin + 1), _ in 1:(col_end - col_begin + 1) ]
     intensity_matrix[r0 - row_begin, c0 - col_begin] = intensity_dB
     # Frequency vector for "oneCut"
     freqs = Float64[frequency]

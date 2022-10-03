@@ -22,65 +22,43 @@ const agd = ArchGDAL
 
 
 
-function run_lights( output_path::String, dem_file::String, source_file::String, radius::Float64 )
+function run_lights( output_path::String, dem_file::String, source_file::String, intensity::Float64, source_height::Float64 )
     
     radius <= 0 && throw(DomainError(radius, "`radius` value must be grater than zero."))
 
-
-
-    dem = agd.read(dem_file)
-    src_geom = agd.getgeom(collect(agd.getlayer(agd.read(source_file), 0))[1])
-
-
-
+    src_geom, dem = Functions.check_and_return_spatial_data(source_file, dem_file)
 
     # Find source cell
     x_source = agd.getx(src_geom, 0)
     y_source = agd.gety(src_geom, 0)
-    r0, c0 = Functions.toIndexes(dem, x_source, y_source)
 
+    noData = something(Float32(agd.getnodatavalue(dem)), -9999.0f0)
     band = agd.getband(dem, 1)
+    rows, cols = size(band)
 
-    # Number of cells in radius
-    resolution = sum( Functions.getCellDims(dem) ) / 2.0
-    cell_radius = ceil( Int64, radius / resolution )
-    
-    rmax, cmax = size(band)
+    intensity_matrix = Float32[noData for _ in 1:rows, _ in 1:cols]
 
-    # The limits of the area whithin `radius` form the source
-    rb = r0 - cell_radius 
-    cb = c0 - cell_radius
-    re = r0 + cell_radius
-    ce = c0 + cell_radius
+    start = now()
 
-    if rb < 1
-        rb = 1
-    end
-    if cb < 1
-        cb = 1
-    end
-    if re > rmax
-        re = rmax
-    end
-    if ce > cmax
-        ce = cmax
+    # Generate the visibility map of the area
+    vis_map = Viewshed.run_viewshed(dem, src_geom, source_height)
+
+    for r in 1:rows, c in 1:cols
+        band[r, c] == noData && continue
+        if !vis_map[r, c]
+            intensity_matrix[r, c] = 0.0
+        else
+            x, y = Functions.toCoords(dem, r, c)
+            distance = Functions.edistance(x, y, x_source, y_source)
+            intensity_matrix = intensity / distance
+        end
     end
 
-    # Generate the visibility map of the delimited area
-    vis_map = Viewshed.run_viewshed( band[rb:re, cb:ce, 1] )
-
-
-
-
-
-
-
-
-
-
-
+    geotransform = agd.getgeotransform(dem)
+    # Create the raster in memory.
+    Functions.writeRaster(intensity_matrix, agd.getdriver("GTiff"), geotransform, dem.crs.val, noData, output_path)
+    println(now() - start)
 end
-
 
 
 end # module

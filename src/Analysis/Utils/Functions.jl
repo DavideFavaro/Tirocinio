@@ -341,8 +341,6 @@ function check_and_return_spatial_data( source_file_path::AbstractString, raster
     end
 end
 
-
-
 """
     check_and_return_spatial_data( source_file_path::AbstractString, limit_area_file_path::AbstractString, raster_file_path::AbstractString )
 
@@ -380,8 +378,6 @@ function check_and_return_spatial_data( source_file_path::AbstractString, limit_
     end
     return src_geom, lmt_geom, raster
 end
-
-
 
 """
     check_and_return_spatial_data( source_file_path::AbstractString, limit_area_file_path::AbstractString, target_area_file_path::AbstractString, raster_file_path::AbstractString )
