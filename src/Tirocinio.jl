@@ -122,9 +122,10 @@ end
 
 
 
-function make_labeled_field( label::String, field::Gtk.GtkWidget )
+
+function make_labeled_field( label::String, field::Vararg{Gtk.GtkWidget} )
     box = GtkBox(:h)
-    push!(box, GtkLabel(label), field)
+    push!(box, GtkLabel(label), field...)
 
     set_gtk_property!(box, :spacing, 10)
     set_gtk_property!(box, :margin, 10)
@@ -133,16 +134,29 @@ function make_labeled_field( label::String, field::Gtk.GtkWidget )
     return box
 end
 
+
+function make_labeled_field( label::String, extension::String, field::Gtk.GtkEntry, save::Bool=false )
+    box = GtkBox(:h)
+    b_file = GtkButton("Select")
+    signal_connect(
+        (w) -> begin
+            file = save ? save_dialog("Save as...") : open_dialog(label, GtkNullContainer(), ("*$extension",))
+            set_gtk_property!(field, :text, file)
+        end,
+        b_file,
+        "clicked"
+    )
+    push!(box, GtkLabel(label), field, b_file)
+    return box
+end
+
 function make_labeled_field( label::String, field::Gtk.GtkScale )
     box = GtkBox(:h)
     push!(box, GtkLabel(label), field)
-
     set_gtk_property!(field, :expand, true)
-
     set_gtk_property!(box, :spacing, 10)
     set_gtk_property!(box, :margin, 10)
     set_gtk_property!(box, :margin_left, 20)
-
     println(box)
     return box
 end
@@ -152,9 +166,9 @@ end
 function add_fields!(title::String, istol::Bool, fields_box::Gtk.GtkBox )
     # Among the inputs there will always be: the output file, terrain raster file and the source vector file.
     fields = Gtk.GtkBoxLeaf[
-        make_labeled_field( "Output file", GtkEntry() ),
-        make_labeled_field( "Elevation raster file", GtkEntry() ),
-        make_labeled_field( "Source vector file", GtkEntry() )
+        make_labeled_field( "Output file", ".tiff", GtkEntry(), true ),
+        make_labeled_field( "Elevation raster file", ".tiff", GtkEntry() ),
+        make_labeled_field( "Source vector file", ".shp", GtkEntry() )
     ]
     # Position of tollerance and target fields, defaults at the positions for Aquifers
     pos_tol = 11
@@ -167,7 +181,7 @@ function add_fields!(title::String, istol::Bool, fields_box::Gtk.GtkBox )
         end
         set_gtk_property!(cb, :active, 0)
         push!(fields,
-            make_labeled_field( "Aquifer area file",      GtkEntry() ),                                                            # aquifer_area_file::String
+            make_labeled_field( "Aquifer area file",      ".shp", GtkEntry() ),                                                            # aquifer_area_file::String
             make_labeled_field( "Contaminant CAS number", GtkEntry() ),                                                            # contaminantCASNum::String
             make_labeled_field( "Concentration",          GtkSpinButton(0.0:2.0^62, digits=4) ),                                   # concentration::Float64
             make_labeled_field( "Aquifer depth",          GtkSpinButton(0.0:2.0^62, digits=4) ),                                   # aquifer_depth::Float64
@@ -187,7 +201,7 @@ function add_fields!(title::String, istol::Bool, fields_box::Gtk.GtkBox )
     elseif title == "Lakes"
         pos_tol = 9
         push!(fields,
-            make_labeled_field( "Lake area file",                                   GtkEntry() ),                                                       # lake_area_file::String
+            make_labeled_field( "Lake area file",                                   ".shp", GtkEntry() ),                                                       # lake_area_file::String
             make_labeled_field( "Contaminant mass",                                 GtkSpinButton(0.0:2.0^62, digits=4) ),                              # contaminant_mass::Float64
             make_labeled_field( "Wind direction",                                   GtkSpinButton(0:360) ),                                             # wind_direction::Int64
             make_labeled_field( "Mean flow speed",                                  GtkSpinButton(0.0:2.00^62, digits=3) ),                             # mean_flow_speed::Float64
@@ -198,7 +212,7 @@ function add_fields!(title::String, istol::Bool, fields_box::Gtk.GtkBox )
         )
     elseif title == "Noises"
         push!(fields,
-            make_labeled_field( "Terrain impedances raster file", GtkEntry() ),                          # terrain_impedences_file::String
+            make_labeled_field( "Terrain impedances raster file", ".tiff", GtkEntry() ),                          # terrain_impedences_file::String
             make_labeled_field( "Temperature",                    GtkSpinButton(0.0:2.0^62, digits=4) ), # temperature::Float64
             make_labeled_field( "Relative humidity",              GtkSpinButton(0.0:2.0^62, digits=4) ), # relative_humidity::Float64
             make_labeled_field( "Sound Pressure Level",           GtkSpinButton(0.0:2.0^62, digits=4) ), # intensity_dB::Float64
@@ -241,7 +255,7 @@ function add_fields!(title::String, istol::Bool, fields_box::Gtk.GtkBox )
     if title == "Aquifers" || title == "Lakes" || title == "Plumes" || title == "Sediments" 
         # If the user chose analysis with tollerance value add the field, otherwise add the target area field
         istol ? insert!( fields, pos_tol, make_labeled_field( "Tollerance value", GtkScale(false, 1:4) ) ) :
-            insert!( fields, pos_trg, make_labeled_field( "Target area file", GtkEntry() ) )
+            insert!( fields, pos_trg, make_labeled_field( "Target area file", ".shp", GtkEntry() ) )
     end
     push!(fields_box, fields...)
     return nothing
@@ -272,12 +286,24 @@ function create_input_window!( title::String, istol::Bool, window::Base.RefValue
                     push!( input, get_gtk_property( box[2], :value, Float64 ) )
                 elseif box[2] isa GtkEntry
                     content = get_gtk_property( box[2], :text, String )
+                    # Empty field
                     if isempty(content)
                         proceed = false
                         error_dialog("All fields must be filled.")
                         break
-                    else
+                    # Text not ment to be a path
+                    elseif !occursin("\\", content) || !occursin(".", content)
                         push!(input,  content)
+                    # File path
+                    else
+                        ext = split(content, ".")[end]
+                        if ext == "shp" || ext == "tiff" || ext == "tif"
+                            push!(input,  content)
+                        else
+                            proceed = false
+                            error_dialog("\"$content\" File not valid.")
+                            break
+                        end
                     end
                 elseif box[2] isa GtkBoxLeaf
                     for b in box[2]

@@ -145,7 +145,6 @@ function run_plume( output_path::String, dem_file::String, source_file::String, 
     (tolerance < 1 || tolerance > 4) && throw(DomainError(tolerance, "`tolerance` value must be between 1 and 4."))
     gas_velocity < 0 && throw(DomainError(gas_velocity, "`gas_velocity` "*error_msgs[1]))
 
-
     src_geom, dem = Functions.check_and_return_spatial_data(source_file, dem_file)
 
     # Find the location of the source in the raster (as raster indexes).

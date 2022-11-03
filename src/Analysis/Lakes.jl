@@ -98,7 +98,7 @@ function run_lake( output_path::String, dem_file::String, source_file::String, l
     λk < 0 && throw(DomainError(λk, "`λk` "*error_msgs[1]))
 
     # Initialize spatial data, checking wether there is a target area to initialize or not.
-    src_geom, lake_geom, dem = Functions.check_and_return_spatial_data(source_file, lake_area_file, dem_file)
+    src_geom, lake_geom, dem = Functions.check_and_return_spatial_data(source_file, dem_file, limit_area_file_path=lake_area_file)
 
     # The cartesian angle is not the same of the raster one, specifically it's mirrored on the Y axis, the operation below ( "(360 + 180 - angle) % 360" ) fixes this.
      # Ex. 0° cartesian == 180° raster, 45° cartesian == 135° raster
@@ -131,7 +131,7 @@ function run_lake( output_path::String, dem_file::String, source_file::String, l
     λk < 0 && throw(DomainError(λk, "`λk` "*error_msgs[1]))
 
     # Initialize spatial data, checking wether there is a target area to initialize or not.
-    src_geom, lake_geom, trg_geom, dem = Functions.check_and_return_spatial_data(source_file, lake_area_file, target_area_file,  dem_file)
+    src_geom, lake_geom, trg_geom, dem = Functions.check_and_return_spatial_data(source_file, dem_file, limit_area_file_path=lake_area_file, target_area_file_path=target_area_file)
 
     # The cartesian angle is not the same of the raster one, specifically it's mirrored on the Y axis, the operation below ( "(360 + 180 - angle) % 360" ) fixes this.
      # Ex. 0° cartesian == 180° raster, 45° cartesian == 135° raster

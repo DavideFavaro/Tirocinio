@@ -310,121 +310,52 @@ end
 
 
 """
-    check_and_return_spatial_data( source_file_path::AbstractString, raster_file_path::AbstractString )
+    check_and_return_spatial_data( source_file_path::AbstractString, raster_file_paths::Vararg{AbstractString}; limit_area_file_path::AbstractString="", target_area_file_path::AbstractString="" )
 
-Check wether the shapefile pointed at by the `source_file_path` is valid as source point and the raster pointed at by `raster_file_path` has the
-same coordinate reference system(CRS) as the source, if so return the geometry of the source and the raster, otherwise throw a `DomainError`.
-"""
-function check_and_return_spatial_data( source_file_path::AbstractString, raster_file_path::AbstractString; target_area_file_path::AbstractString="" )
- # Source check
-    src_geom = agd.getgeom(collect(agd.getlayer(agd.read(source_file_path), 0))[1])
-    if agd.geomdim(src_geom) != 0
-        throw(DomainError(source_file_path, "`source` must be a point"))
-    end
- # raster check
-    raster = agd.read(raster_file_path)
-    if agd.toWKT(agd.getspatialref(src_geom)) != agd.getproj(raster)
-        throw(DomainError("The reference systems are not uniform. Aborting analysis."))
-    end
- # Analysis target area check
-    if isempty(target_area_file_path)
-        return src_geom, raster
-    else
-        trg_geom = agd.getgeom(collect(agd.getlayer(agd.read(target_area_file_path), 0))[1])
-        if agd.geomdim(trg_geom) != 2
-            throw(DomainError(target_area_file_path, "The target area must be a polygon."))
-        end
-        if agd.toWKT(agd.getspatialref(trg_geom)) != agd.toWKT(agd.getspatialref(src_geom))
-            throw(DomainError("The reference systems are not uniform."))
-        end
-        return src_geom, trg_geom, raster
-    end
-end
+Check that:
+ - the shapefile pointed at by `source_file_path` is valid as source point;
+ - the following rasters' paths have all the same CRS as the source;
+ - the target area identified by `target_area_file_path`, if present, has the same CRS as the above files and has a valid geometry (it must be a polygon);
+ - the limit area identified by `limit_area_file_path`, if present, meets the same conditions cited above, contains the source and intersects atleas partially the target area.\n
+If all the checks are passed, return the rasters and the geometries, otherwise throw a `DomainError`.\n
+Vectorial data objects are returned first, followed by the rasters.
 
-"""
-    check_and_return_spatial_data( source_file_path::AbstractString, limit_area_file_path::AbstractString, raster_file_path::AbstractString )
-
-Check that the validity of the input files and return the geometries, for shapefiles, or raster, for rasters.
-Throws `DomainError` in case of invalid input files.
-
-#Arguments
+# Arguments
 - `source_file_path::AbstractString`: source of pollution, must be a point.
-- `limit_area_file_path::AbstractString`: polygon defining the naturally limited area for the analysis, for example a lake or an aquifer.
-- `raster_file_path::AbstractString`: raster file holding terrain data.
+- `raster_file_paths::Vararg{AbstractString}`: one or more raster files representing properties of the area, all must have the same coordinate reference systems as the source.
+- `limit_area_file_path::AbstractString`: polygon defining the naturally limited area for the analysis, for example the borders of a lake or an aquifer.
+- `target_area_file_path::AbstractString=""`: shapefile reppresenting the specific area to analyze, must be a polygon.
 """
-function check_and_return_spatial_data( source_file_path::AbstractString, limit_area_file_path::AbstractString, raster_file_path::AbstractString )
+function check_and_return_spatial_data( source_file_path::AbstractString, raster_file_paths::Vararg{AbstractString}; limit_area_file_path::AbstractString="", target_area_file_path::AbstractString="" )
  # Source check
-    src_geom = agd.getgeom(collect(agd.getlayer(agd.read(source_file_path), 0))[1])
-    if agd.geomdim(src_geom) != 0
-        throw(DomainError(source_file_path, "The source must be a point"))
-    end
+    # Used to return a somewhat uniform result and also to handle all the various possible results
+    results = Union{ArchGDAL.IDataset, ArchGDAL.IGeometry}[ agd.getgeom(collect(agd.getlayer(agd.read(source_file_path), 0))[1]) ]
+    agd.geomdim(results[1]) != 0 && throw(DomainError(source_file_path, "`source` must be a point"))
+    refsys = agd.toWKT(agd.getspatialref(results[1]))
  # Limit area check
-    lmt_geom = agd.getgeom(collect(agd.getlayer(agd.read(limit_area_file_path), 0))[1])
-    if agd.geomdim(lmt_geom) != 2
-        throw(DomainError(area_file_path, "The limit area must be a polygon."))
-    end
-    if !agd.contains(lmt_geom, src_geom)
-        throw(DomainError("The limit area polygon must contain the source."))
-    end
- # Coordinate reference system check
-    refsys = agd.toWKT(agd.getspatialref(src_geom))
-    if agd.toWKT(agd.getspatialref(lmt_geom)) != refsys
-        throw(DomainError("The reference systems are not uniform."))
-    end
- # Raster check
-    raster = agd.read(raster_file_path)
-    if agd.getproj(raster) != refsys
-        throw(DomainError("The reference systems are not uniform."))
-    end
-    return src_geom, lmt_geom, raster
-end
-
-"""
-    check_and_return_spatial_data( source_file_path::AbstractString, limit_area_file_path::AbstractString, target_area_file_path::AbstractString, raster_file_path::AbstractString )
-
-Check that the validity of the input files and return the geometries, for shapefiles, or raster, for rasters.
-Throws `DomainError` in case of invalid input files.
-
-#Arguments
-- `source_file_path::AbstractString`: source of pollution, must be a point.
-- `limit_area_file_path::AbstractString`: polygon defining the naturally limited area for the analysis, for example a lake or an aquifer.
-- `target_area_file_path::AbstractString`: polygon reppresenting the area to be analyzed, should be smaller than the limit area and must at least intersect it.
-- `raster_file_path::AbstractString`: raster file holding terrain data.
-"""
-function check_and_return_spatial_data( source_file_path::AbstractString, limit_area_file_path::AbstractString, target_area_file_path::AbstractString, raster_file_path::AbstractString )
-   
- # Source check
-    src_geom = agd.getgeom(collect(agd.getlayer(agd.read(source_file_path), 0))[1])
-    if agd.geomdim(src_geom) != 0
-        throw(DomainError(source_file_path, "The source must be a point"))
-    end
- # Area check
-    lmt_geom = agd.getgeom(collect(agd.getlayer(agd.read(limit_area_file_path), 0))[1])
-    if agd.geomdim(lmt_geom) != 2
-        throw(DomainError(limit_area_file_path, "The limit area must be a polygon."))
-    end
-    if !agd.contains(lmt_geom, src_geom)
-        throw(DomainError("The limit area polygon must contain the source."))
+    is_limit_area = !isempty(limit_area_file_path)
+    if is_limit_area
+        push!( results, agd.getgeom(collect(agd.getlayer(agd.read(limit_area_file_path), 0))[1]) )
+        agd.geomdim(results[2]) != 2 && throw(DomainError(limit_area_file_path, "The limit area must be a polygon."))
+        !agd.contains(results[2], results[1]) && throw(DomainError("The limit area must contain the source."))
+        agd.toWKT(agd.getspatialref(results[2])) != refsys && throw(DomainError("The reference systems are not uniform."))
     end
  # Analysis target area check
-    trg_geom = agd.getgeom(collect(agd.getlayer(agd.read(target_area_file_path), 0))[1])
-    if agd.geomdim(trg_geom) != 2
-        throw(DomainError(target_area_file_path, "The target area must be a polygon."))
+    if !isempty(target_area_file_path)
+        push!( results, agd.getgeom(collect(agd.getlayer(agd.read(target_area_file_path), 0))[1]) )
+        # `results[end]` is used to identify the target area because there is no certainty wether a limit area is present or not and this way is easier than creating a check
+        agd.geomdim(results[end]) != 2 && throw(DomainError(target_area_file_path, "The target area must be a polygon."))
+        agd.toWKT(agd.getspatialref(results[end])) != refsys && throw(DomainError("The reference systems are not uniform."))
+        # If `is_limit_area` is true, then the limit area is the second element of results and the target area is the third
+        is_limit_area && !agd.contains(results[2], results[3]) && !agd.intersects(results[2], results[3]) &&
+            throw(DomainError("The target area polygon must overlap at least partially with the limit area polygon."))
     end
-    if !agd.contains(lmt_geom, trg_geom) && !agd.intersects(lmt_geom, trg_geom)
-        throw(DomainError("The target area must overlap at least partially with the limit area polygon"))
+ # Raster(s) check
+    for path in raster_file_paths
+        push!(results, agd.read(path))
+        agd.getproj(results[end]) != refsys && throw(DomainError("The reference systems are not uniform. Aborting analysis."))
     end
- # Coordinate reference systems check
-    refsys = agd.toWKT(agd.getspatialref(src_geom))
-    if agd.toWKT(agd.getspatialref(lmt_geom)) != refsys || agd.toWKT(agd.getspatialref(trg_geom)) != refsys
-        throw(DomainError("The reference systems are not uniform."))
-    end
- # Raster check
-    raster = agd.read(raster_file_path)
-    if agd.getproj(raster) != refsys
-        throw(DomainError("The reference systems are not uniform."))
-    end
-    return src_geom, lmt_geom, trg_geom, raster
+    return results
 end
 
 

@@ -268,7 +268,7 @@ function run_aquifer( output_path::String, dem_file::String, source_file::String
     # Check for actual results
     any( isempty, [volumetric_air_content, volumetric_water_content, effective_infiltration, tera_e, grain] ) && throw(DomainError(texture, "Analysis error, check input parameters"))
 
-    src_geom, aqf_geom, dem = Functions.check_and_return_spatial_data(source_file, aquifer_area_file, dem_file)
+    src_geom, aqf_geom, dem = Functions.check_and_return_spatial_data(source_file, dem_file, limit_area_file_path=aquifer_area_file)
 
     effective_infiltration *= (mean_rainfall / 10.0)^2.0
     # Find the location of the source in the raster (as raster indexes)
@@ -326,7 +326,7 @@ function run_aquifer( output_path::String, dem_file::String, source_file::String
     # Check for actual results.
     any( isempty, [volumetric_air_content, volumetric_water_content, effective_infiltration, tera_e, grain] ) && throw(DomainError(texture, "Analysis error, check input parameters"))
 
-    src_geom, aqf_geom, trg_geom, dem = Functions.check_and_return_spatial_data(source_file, aquifer_area_file, target_area_file, dem_file)
+    src_geom, aqf_geom, trg_geom, dem = Functions.check_and_return_spatial_data(source_file, dem_file, limit_area_file_path=aquifer_area_file, target_area_file_path=target_area_file)
 
     effective_infiltration *= (mean_rainfall / 10.0)^2.0
     # Find the location of the source in the raster (as raster indexes).
